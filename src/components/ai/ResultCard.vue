@@ -517,8 +517,8 @@ const formattedFilenames = computed(() => {
     const lastDotIndex = filename.lastIndexOf('.')
     const nameWithoutExt = lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename
     
-    // 格式: {secondary}-{third}-{originalName}.png
-    const formattedName = `${props.result.secondary}-${props.result.third}-${nameWithoutExt}.png`
+    // 格式: {secondary}--{third}_{originalName}.png
+    const formattedName = `${props.result.secondary}--${props.result.third}_${nameWithoutExt}.png`
     return formattedName
   }) || []
 })
