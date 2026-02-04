@@ -120,13 +120,15 @@ export const useUploadStore = defineStore('upload', () => {
         let compressed = false
         let originalSize = file.size
 
-        if (file.size > 5 * 1024 * 1024) {
+        // 只对超过20MB的文件进行压缩，保护8K图片
+        if (file.size > 20 * 1024 * 1024) {
           try {
             const result = await imageCompressor.compress(file, {
-              maxWidth: 3840,
-              maxHeight: 2160,
-              quality: 0.9,
-              maxSizeMB: 5
+              maxWidth: 7680,  // 支持8K分辨率
+              maxHeight: 4320,
+              maxPixels: 33177600, // 8K像素总数，支持非标准尺寸
+              quality: 0.95,   // 更高质量
+              maxSizeMB: 20    // 更大的目标大小
             })
 
             if (result.compressed) {

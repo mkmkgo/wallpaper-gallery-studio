@@ -7,11 +7,12 @@
 class ImageCompressor {
   constructor() {
     this.defaultOptions = {
-      maxWidth: 3840, // 4K宽度
-      maxHeight: 2160, // 4K高度
-      quality: 0.9, // 压缩质量 0-1
+      maxWidth: 7680, // 8K宽度 (7680x4320)
+      maxHeight: 4320, // 8K高度
+      maxPixels: 33177600, // 8K像素总数 (7680×4320)，约3300万像素
+      quality: 0.95, // 提高压缩质量到95%
       mimeType: 'image/jpeg', // 输出格式
-      maxSizeMB: 5, // 最大文件大小（MB）
+      maxSizeMB: 20, // 提高最大文件大小到20MB
       enableResize: true, // 是否启用尺寸压缩
       enableQualityCompress: true // 是否启用质量压缩
     }
@@ -139,19 +140,24 @@ class ImageCompressor {
    * 检查是否需要压缩
    */
   _needCompress(file, options) {
-    // 文件大小超过限制
-    if (file.size > options.maxSizeMB * 1024 * 1024) {
-      return true
-    }
-
     // 非图片文件不压缩
     if (!file.type.startsWith('image/')) {
       return false
     }
 
-    // WebP 格式且文件小于限制，不压缩
+    // WebP 格式且文件小于限制，不压缩（WebP已经很高效）
     if (file.type === 'image/webp' && file.size <= options.maxSizeMB * 1024 * 1024) {
       return false
+    }
+
+    // PNG格式的8K图片，如果小于30MB，不压缩（保持无损质量）
+    if (file.type === 'image/png' && file.size <= 30 * 1024 * 1024) {
+      return false
+    }
+
+    // 文件大小超过限制才压缩
+    if (file.size > options.maxSizeMB * 1024 * 1024) {
+      return true
     }
 
     return false
@@ -180,22 +186,32 @@ class ImageCompressor {
   }
 
   /**
-   * 计算目标尺寸
+   * 计算目标尺寸 - 支持非标准尺寸的高分辨率图片
    */
   _calculateSize(width, height, options) {
     if (!options.enableResize) {
       return { width, height }
     }
 
-    const { maxWidth, maxHeight } = options
+    const { maxWidth, maxHeight, maxPixels } = options
+    const currentPixels = width * height
 
-    // 不需要缩放
+    // 如果像素总数在8K范围内，不缩放
+    if (currentPixels <= maxPixels) {
+      return { width, height }
+    }
+
+    // 如果尺寸在标准8K范围内，不缩放
     if (width <= maxWidth && height <= maxHeight) {
       return { width, height }
     }
 
-    // 计算缩放比例
-    const ratio = Math.min(maxWidth / width, maxHeight / height)
+    // 需要缩放：优先按像素总数缩放，保持宽高比
+    const pixelRatio = Math.sqrt(maxPixels / currentPixels)
+    const sizeRatio = Math.min(maxWidth / width, maxHeight / height)
+    
+    // 选择更保守的缩放比例（保持更高质量）
+    const ratio = Math.max(pixelRatio, sizeRatio)
 
     return {
       width: Math.round(width * ratio),
