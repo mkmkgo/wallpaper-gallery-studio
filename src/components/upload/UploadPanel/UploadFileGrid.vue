@@ -244,7 +244,7 @@ defineExpose({
     padding-right: $spacing-2;
     padding-bottom: $spacing-4;
     align-content: start;
-    max-height: 100%;
+    min-height: 0;
 
     // 限制最大列数，避免图片过小
     @media (min-width: 1400px) {
@@ -317,6 +317,10 @@ defineExpose({
 .grid-leave-to {
   opacity: 0;
   transform: scale(0.8);
+}
+
+.grid-leave-active {
+  position: absolute;
 }
 
 .grid-move {
