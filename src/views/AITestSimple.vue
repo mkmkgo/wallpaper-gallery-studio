@@ -3,30 +3,23 @@
     <div class="test-container">
       <h1 class="title">🤖 AI 图片分类测试</h1>
 
-      <!-- AI 服务商和模型选择 -->
+      <!-- AI 模型选择 -->
       <el-card class="compact-card" shadow="hover">
-        <template #header>⚙️ AI 配置</template>
-        <el-form label-width="100px" size="small">
-          <!-- 生产环境才显示 API Key 配置 -->
-          <el-form-item v-if="isProduction" label="API Key">
-            <el-input
-              v-model="config.apiKey"
-              type="password"
-              placeholder="输入豆包 API Key"
-              show-password
-              clearable
-            />
-          </el-form-item>
-          <el-form-item label="AI 服务商">
-            <el-select v-model="config.provider" placeholder="选择服务商" style="width: 100%">
-              <el-option label="豆包 AI" value="doubao" />
-              <el-option label="Cloudflare AI" value="cloudflare" />
-            </el-select>
-          </el-form-item>
+        <template #header>⚙️ ModelScope AI 配置</template>
+        <el-form label-width="80px" size="small">
           <el-form-item label="AI 模型">
-            <el-select v-model="config.endpointId" placeholder="选择模型" style="width: 100%">
-              <el-option label="Doubao-Seed-1.6-vision" value="doubao-seed-1-6-vision-250815" />
-              <el-option label="Doubao-Seed-1.8" value="doubao-seed-1-8-251228" />
+            <el-select v-model="config.model" placeholder="选择模型" style="width: 100%">
+              <el-option label="Qwen3-VL-8B-Instruct (推荐)" value="Qwen/Qwen3-VL-8B-Instruct" />
+              <el-option
+                label="Qwen3-VL-235B-A22B-Instruct (最强)"
+                value="Qwen/Qwen3-VL-235B-A22B-Instruct"
+              />
+              <el-option label="Qwen3-VL-8B-Thinking (推理)" value="Qwen/Qwen3-VL-8B-Thinking" />
+              <el-option label="QVQ-72B-Preview (视觉问答)" value="Qwen/QVQ-72B-Preview" />
+              <el-option
+                label="InternVL3.5-241B-A28B (备选)"
+                value="OpenGVLab/InternVL3_5-241B-A28B"
+              />
             </el-select>
           </el-form-item>
         </el-form>
@@ -91,6 +84,14 @@
         </template>
 
         <div v-if="result.success" class="result-content">
+          <!-- 图片预览 -->
+          <div v-if="imagePreview" class="result-section">
+            <h3>�️ 原图预览</h3>
+            <div class="image-preview">
+              <img :src="imagePreview" alt="上传的图片" />
+            </div>
+          </div>
+
           <!-- 分类结果 -->
           <div class="result-section">
             <h3>📁 分类</h3>
@@ -133,6 +134,29 @@
             </div>
           </div>
 
+          <!-- 推理逻辑 -->
+          <div v-if="result.data.reasoning" class="result-section">
+            <h3>🧠 推理逻辑</h3>
+            <p class="description">{{ result.data.reasoning }}</p>
+          </div>
+
+          <!-- 新分类提案 -->
+          <div
+            v-if="
+              result.data.newCategoryProposal && result.data.newCategoryProposal.suggested_third
+            "
+            class="result-section"
+          >
+            <h3>💡 新分类建议</h3>
+            <div class="proposal">
+              <el-tag type="warning" size="small">
+                {{ result.data.newCategoryProposal.suggested_secondary || '' }} /
+                {{ result.data.newCategoryProposal.suggested_third }}
+              </el-tag>
+              <p class="proposal-reason">{{ result.data.newCategoryProposal.reason }}</p>
+            </div>
+          </div>
+
           <!-- 原始响应 -->
           <el-collapse style="margin-top: 16px">
             <el-collapse-item title="查看原始 JSON" name="raw">
@@ -152,29 +176,21 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
-// 检测是否为生产环境
-const isProduction = computed(() => import.meta.env.PROD)
-
 const config = ref({
-  provider: 'doubao',
-  apiKey: import.meta.env.VITE_DOUBAO_API_KEY || '',
-  endpointId: 'doubao-seed-1-6-vision-250815'
+  apiKey: 'ms-81e49e5f-1ba2-4a1f-943f-c89489f8b7b4',
+  model: 'Qwen/Qwen3-VL-8B-Instruct'
 })
 
 const primaryCategory = ref('desktop')
 const selectedFile = ref(null)
+const imagePreview = ref(null) // 添加图片预览URL
 const analyzing = ref(false)
 const progress = ref(0)
 const result = ref(null)
 
 // 检查是否有有效配置
 const hasValidConfig = computed(() => {
-  // 本地环境从 .env.local 读取
-  if (!isProduction.value) {
-    return !!import.meta.env.VITE_DOUBAO_API_KEY
-  }
-  // 生产环境需要手动输入
-  return !!(config.value.apiKey && config.value.endpointId)
+  return !!config.value.apiKey && !!config.value.model
 })
 
 const CATEGORIES = {
@@ -275,27 +291,22 @@ const CATEGORIES = {
 }
 
 function loadConfig() {
-  const saved = localStorage.getItem('doubao_config')
+  const saved = localStorage.getItem('modelscope_config')
   if (saved) {
-    const savedConfig = JSON.parse(saved)
-    // 本地环境优先使用环境变量
-    if (!isProduction.value && import.meta.env.VITE_DOUBAO_API_KEY) {
-      config.value.apiKey = import.meta.env.VITE_DOUBAO_API_KEY
-    } else {
-      config.value = savedConfig
-    }
+    config.value = JSON.parse(saved)
     ElMessage.success('配置已加载')
-  } else if (!isProduction.value && import.meta.env.VITE_DOUBAO_API_KEY) {
-    config.value.apiKey = import.meta.env.VITE_DOUBAO_API_KEY
-    ElMessage.success('已从环境变量加载配置')
-  } else {
-    ElMessage.warning('没有保存的配置')
   }
 }
 
 function handleFileChange(file) {
   selectedFile.value = file
   result.value = null
+
+  // 生成图片预览URL
+  const fileObj = file.raw || file
+  if (fileObj) {
+    imagePreview.value = URL.createObjectURL(fileObj)
+  }
 }
 
 async function compressImage(file) {
@@ -333,7 +344,10 @@ async function compressImage(file) {
         canvas.height = height
         ctx.drawImage(img, 0, 0, width, height)
 
-        resolve(canvas.toDataURL('image/jpeg', 0.9))
+        // 返回纯Base64字符串（去掉data:image/jpeg;base64,前缀）
+        const dataURL = canvas.toDataURL('image/jpeg', 0.9)
+        const base64 = dataURL.split(',')[1]
+        resolve(base64)
       }
       img.onerror = () => reject(new Error('图片加载失败'))
       img.src = e.target.result
@@ -350,109 +364,348 @@ function buildPrompt() {
   let thirdHints = ''
   category.subcategories.forEach(sub => {
     const thirdList = category.thirdLevel[sub] || ['通用']
-    thirdHints += `  • ${sub}：${thirdList.join('、')}\n`
+    thirdHints += `• ${sub}：${thirdList.join('、')}\n`
   })
 
-  return `你是一位专业的壁纸分类专家和文案大师。请仔细分析这张图片，并返回结构化的分类结果。
+  // 根据主分类选择对应的提示词模板
+  if (primaryCategory.value === 'desktop') {
+    return `你是一位资深的视觉美学专家和壁纸分类大师。请分析图片，完成分类归档与元数据生成。
 
-## 分类体系
+## 1. 现有分类体系 (System DB)
 
 **主分类**：${primaryCategory.value}
 
-**二级分类（必须从以下选项中选择）**：
+**二级分类 (Secondary)**：
 ${secondaryList}
 
-**三级分类（根据二级分类选择对应的子类）**：
+**三级分类 (Third)**：
 ${thirdHints}
 
-## 🔴 分类规则（最重要，必须严格遵守）
+## 2. 🧠 核心判定逻辑 (优先级由高到低)
 
-### 二级分类选择
-- **必须**从上述列表中选择最匹配的一个
-- 不得自创分类名称
-- 根据图片的主要内容和主题进行判断
+请严格按照以下**决策树**进行判断，一旦命中上层规则，即停止向下匹配：
 
-### 三级分类选择（重点）
-**"通用"是最后的选择，不是默认选项！**
+### A. 人像分类决策树 (Portrait Logic)
 
-分类决策流程：
-1. **首先**：仔细观察图片的具体特征（场景、人物、风格、主题等）
-2. **然后**：在三级分类列表中寻找最匹配的具体标签
-3. **最后**：只有在以下情况才选择"通用"：
-   - 图片包含多个三级分类的混合元素
-   - 图片风格非常独特，无法归入任何具体标签
-   - 图片内容模糊不清，无法判断具体类型
+1. **特定明星**：
+   - 如果识别出具体明星（如张凌赫），优先归入对应分类。
 
-### 分类示例（重要参考）
+2. **【魅力】(Glamour)**：
+   - **定义**：强调身材曲线、成熟美、吸引力。
+   - **特征**：丝袜、紧身衣、露背/露肩、姿态撩人、夜景霓虹、御姐风。
+   - **判定**：只要包含丝袜或明显的身材展示，优先选此项。
 
-**Desktop 正确示例**：
-- 图片：雪山风景 → 二级：风景，三级：雪山 ✅
-- 图片：城市夜景 → 二级：风景，三级：城市 ✅
-- 图片：海边日落 → 二级：风景，三级：海滨 ✅
-- 图片：星空银河 → 二级：风景，三级：星空 ✅
-- 图片：湖泊倒影 → 二级：风景，三级：湖泊 ✅
-- 图片：猫咪特写 → 二级：萌宠，三级：猫咪 ✅
-- 图片：柴犬玩耍 → 二级：萌宠，三级：狗狗 ✅
-- 图片：初音未来 → 二级：动漫，三级：初音未来 ✅
-- 图片：哆啦A梦 → 二级：动漫，三级：哆啦A梦 ✅
-- 图片：凯蒂猫 → 二级：IP形象，三级：凯蒂猫 ✅
-- 图片：水豚噜噜 → 二级：IP形象，三级：水豚噜噜 ✅
-- 图片：古风美女 → 二级：插画，三级：国风 ✅
-- 图片：卡通场景 → 二级：插画，三级：卡通 ✅
-- 图片：励志文字 → 二级：插画，三级：文字 ✅
+3. **【国风】(Chinese Style)**：
+   - **定义**：中国传统美学、古典韵味。
+   - **特征**：汉服、旗袍、古建筑、水墨画风、传统配饰。
 
-**Mobile/Avatar 示例**：
-- 图片：初音未来手机壁纸 → 二级：动漫，三级：初音未来 ✅
-- 图片：海贼王角色 → 二级：动漫，三级：海贼王 ✅
-- 图片：蜡笔小新 → 二级：动漫，三级：蜡笔小新 ✅
-- 图片：夏目友人帐 → 二级：动漫，三级：夏目友人帐 ✅
+4. **【氛围感】(Atmosphere)**：
+   - **特征**：不露脸（背影/遮挡/模糊）、重光影意境、看不清具体五官。
 
-**错误示例**：
-- 图片：雪山风景 → 二级：风景，三级：通用 ❌（应该选"雪山"）
-- 图片：城市建筑 → 二级：风景，三级：通用 ❌（应该选"城市"或"建筑"）
-- 图片：猫咪 → 二级：萌宠，三级：通用 ❌（应该选"猫咪"）
-- 图片：初音未来 → 二级：动漫，三级：二次元 ❌（应该选"初音未来"）
+5. **【清新】(Fresh)**：
+   - **定义**：明亮、治愈、氧气感。
+   - **特征**：高明度、色彩鲜艳自然、笑容甜美、构图干净。
 
-## 文件名要求
+### B. 动漫与插画决策树 (Anime Logic)
 
-创作一个**有内涵、高雅、富有诗意**的中文文件名：
-- 长度：8-15个汉字
-- 风格：优雅、精炼、有意境
-- 内容：提炼图片的核心美感和情感氛围
-- 避免：平铺直叙、过于直白、堆砌关键词
+1. **特定 IP**：
+   - 认出具体角色或作品（如初音未来、鬼灭之刃、美少女战士），必须归入对应 IP 子类。
 
-示例：
-- "晨曦微光下的静谧森林"（而非"森林早晨阳光树木"）
-- "星河璀璨夜空梦境"（而非"夜晚星空银河系"）
-- "雪山云海间的孤寂之美"（而非"雪山云雾风景"）
+2. **【动漫】(Anime)**：
+   - **特征**：典型的日式动画风格（赛璐璐涂色、大眼睛、动画感）。
+   - **子类判断**：
+     - 能识别具体作品 -> 动漫/[作品名]
+     - 无法识别具体作品 -> 动漫/二次元
+   - **注意**：只要是动画风格，就应该归入"动漫"类，而不是"通用"
 
-## 关键词要求
+3. **【插画】(Illustration)**：
+   - **特征**：绘画感强（水彩、厚涂、手绘风格），非动画截图感。
+   - **子类判断**：
+     - 国风元素 -> 插画/国风
+     - 卡通风格 -> 插画/卡通
+     - 创意设计 -> 插画/创意
+     - 场景为主 -> 插画/场景
+   - **区别**：插画更偏向艺术创作，动漫更偏向动画风格
 
-提取3-5个精准的中文关键词：
-- 涵盖：主题、风格、色调、情感
-- 要求：简洁、准确、有辨识度
-- 避免：过于宽泛的词汇
+### C. 风景分类决策树 (Landscape Logic)
 
-## 描述要求
+1. **具体场景优先**：
+   - 雪山 -> 风景/雪山
+   - 城市建筑 -> 风景/城市 或 风景/建筑
+   - 星空银河 -> 风景/星空
+   - 海边沙滩 -> 风景/海滨
+   - 湖泊倒影 -> 风景/湖泊
+   - 日落黄昏 -> 风景/日落
 
-用一句话（20-40字）描述图片：
-- 突出视觉特点和艺术风格
-- 传达图片的情感氛围
-- 语言优美、富有感染力
+2. **通用**：
+   - 只有在无法明确归类到具体场景时才选择"通用"。
 
-## 输出格式
+## 3. 任务规则
 
-请严格按照以下JSON格式返回（不要包含任何其他文字说明）：
+### 任务一：归类与提案
+
+- **必须**从现有列表中选择 \`secondary\` 和 \`third\`。
+- **新分类提案 (Proposal)**：
+  - 如果图片是**现有库中缺失**的知名IP、明星或特定风格。
+  - 请在 \`new_category_proposal\` 中填写建议。
+  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/咒术回战\`。
+
+### 任务二：文案生成
+
+- **标题 (displayTitle)**:：
+  - 8-15个汉字，高雅、富有诗意。
+  - 即使是"魅力"类图片，标题也要唯美含蓄，禁止使用低俗词汇。
+
+- **文件名 (filenames)**：
+  - **提供两个不同的中文文件名**（8-15个汉字）。
+  - 禁止英文命名
+  - 侧重于**具体描述**，方便检索。
+  - 结构：修饰形容词 + '主体' + '场景或动作' + '.jpg'。
+  - ❌拒绝太短（如"女孩.jpg"）。
+  - ✅示例：
+    - '阳光下奔跑的治愈系柴犬.jpg'
+    - '身穿黑色长裙的卷发港风少女.jpg'
+    - '赛博朋克风格的都市霓虹夜景.jpg'
+
+- **关键词 (keywords)**：
+  - 3-5个精准中文词，包含风格定义词。
+
+## 4. 输出格式 (JSON Only)
+
+请严格输出纯 JSON 格式，不要包含 markdown 标记：
 
 {
-  "secondary": "二级分类名称",
-  "third": "三级分类名称",
+  "secondary": "从现有列表中选择",
+  "third": "从现有列表中选择",
+  "is_perfect_match": true/false,
+  "new_category_proposal": {
+    "suggested_secondary": "建议二级(无则null)",
+    "suggested_third": "建议三级(如具体IP名)",
+    "reason": "提案理由"
+  },
+  "displayTitle": "诗意中文标题",
+  "filenames": ["阳光下奔跑的治愈系柴犬.jpg", "草地上欢快玩耍的小柴犬.jpg"],
   "keywords": ["关键词1", "关键词2", "关键词3"],
-  "filename": "优雅精炼的中文文件名",
-  "description": "富有美感的图片描述"
-}
+  "description": "20-40字优美描述",
+  "reasoning": "逻辑链说明。例如：'图片为雪山风景，山峰清晰可见，根据规则C1，判定为[风景/雪山]'"
+}`
+  } else if (primaryCategory.value === 'mobile') {
+    return `你是一位资深的视觉美学专家和壁纸分类大师。请分析图片，完成分类归档与元数据生成。
 
-⚠️ 再次强调：三级分类优先选择具体标签，"通用"是最后的选择！`
+## 1. 现有分类体系 (System DB)
+
+**主分类**：${primaryCategory.value}
+
+**二级分类 (Secondary)**：
+${secondaryList}
+
+**三级分类 (Third)**：
+${thirdHints}
+
+## 2. 🧠 核心判定逻辑 (优先级由高到低)
+
+请严格按照以下**决策树**进行判断，一旦命中上层规则，即停止向下匹配：
+
+### A. 人像分类决策树 (Portrait Logic)
+
+1. **特定明星/古装**：
+   - 如果识别出具体明星（如迪丽热巴）或明确的古装（汉服），优先归入对应分类。
+
+2. **【魅力】(Glamour)**：
+   - **定义**：强调身材曲线、成熟美、吸引力。
+   - **特征**：丝袜（黑/白丝）、紧身衣、露背/露肩、姿态撩人、夜景霓虹、御姐风。
+   - **判定**：只要包含丝袜或明显的身材展示，优先选此项，覆盖日系/清新。
+
+3. **【日系】(Japanese Style)**：
+   - **定义**：胶片摄影风格、情绪片。
+   - **特征**：颗粒感、低对比度、偏青/蓝色调、JK制服(非性感类)、街道/自动贩卖机、抓拍感。
+
+4. **【清新】(Fresh)**：
+   - **定义**：明亮、治愈、氧气感。
+   - **特征**：高明度（画面很亮）、色彩鲜艳自然、笑容甜美、背景通常是草地/蓝天/白墙、构图干净、给人"初恋感"。
+
+5. **【氛围感】(Atmosphere)**：
+   - **特征**：不露脸（背影/遮挡/模糊）、重光影意境、看不清具体五官。
+
+### B. 动漫与插画决策树 (Anime Logic)
+
+1. **特定 IP**：
+   - 认出具体角色（如路飞、柯南、美少女战士），必须归入对应 IP 子类。
+
+2. **【动漫】(Anime)**：
+   - **特征**：典型的日式动画风格（赛璐璐涂色、大眼睛、动画感）。
+   - **子类判断**：
+     - 能识别具体作品 -> 动漫/[作品名]
+     - 无法识别具体作品 -> 动漫/二次元
+   - **注意**：只要是动画风格，就应该归入"动漫"类，而不是"通用"
+
+3. **【插画】(Illustration)**：
+   - **特征**：绘画感强（水彩、厚涂、手绘风格），非动画截图感。
+   - **区别**：插画更偏向艺术创作，动漫更偏向动画风格
+
+## 3. 任务规则
+
+### 任务一：归类与提案
+
+- **必须**从现有列表中选择 \`secondary\` 和 \`third\`。
+- **新分类提案 (Proposal)**：
+  - 如果图片是**现有库中缺失**的知名IP（如《咒术回战》）、明星或特定风格。
+  - 请在 \`new_category_proposal\` 中填写建议。
+  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/咒术回战\`。
+
+### 任务二：文案生成
+
+- **标题 (displayTitle)**:：
+  - 8-15个汉字，高雅、富有诗意。
+  - 即使是"魅力"类图片，标题也要唯美含蓄（如"月光下的黑色曼陀罗"，禁止使用低俗词汇）。
+
+- **文件名 (filenames)**：
+  - **提供两个不同的中文文件名**（8-15个汉字）。
+  - 禁止英文命名
+  - 侧重于**具体描述**，方便检索。
+  - 结构：修饰形容词 + '主体' + '场景或动作' + '.jpg'。
+  - ❌拒绝太短（如"女孩.jpg"）。
+  - ✅示例：
+    - '阳光下奔跑的治愈系柴犬.jpg'
+    - '身穿黑色长裙的卷发港风少女.jpg'
+    - '赛博朋克风格的都市霓虹夜景.jpg'
+
+- **关键词 (keywords)**：
+  - 3-5个精准中文词，包含风格定义词（如：胶片感、黑丝、治愈系）。
+
+## 4. 输出格式 (JSON Only)
+
+请严格输出纯 JSON 格式，不要包含 markdown 标记：
+
+{
+  "secondary": "从现有列表中选择",
+  "third": "从现有列表中选择",
+  "is_perfect_match": true/false,
+  "new_category_proposal": {
+    "suggested_secondary": "建议二级(无则null)",
+    "suggested_third": "建议三级(如具体IP名)",
+    "reason": "提案理由"
+  },
+  "displayTitle": "诗意中文标题",
+  "filenames": ["身穿黑色长裙的卷发港风少女.jpg", "夜色中优雅漫步的长发女孩.jpg"],
+  "keywords": ["关键词1", "关键词2", "关键词3"],
+  "description": "20-40字优美描述",
+  "reasoning": "逻辑链说明。例如：'检测到人物穿着JK制服但光线明亮笑容甜美，无胶片感，根据规则A4，判定为[清新]而非[日系]'"
+}`
+  } else {
+    // avatar
+    return `你是一位资深的视觉美学专家和壁纸分类大师。请分析图片，完成分类归档与元数据生成。
+
+## 1. 现有分类体系 (System DB)
+
+**主分类**：${primaryCategory.value}
+
+**二级分类 (Secondary)**：
+${secondaryList}
+
+**三级分类 (Third)**：
+${thirdHints}
+
+## 2. 🧠 核心判定逻辑 (优先级由高到低)
+
+请严格按照以下**决策树**进行判断，一旦命中上层规则，即停止向下匹配：
+
+### A. IP形象与动漫决策树
+
+1. **特定 IP 形象**：
+   - 认出具体IP角色（如Hello Kitty、乌萨奇、水豚噜噜），必须归入对应 IP 子类。
+
+2. **动漫角色**：
+   - 认出具体动漫角色（如哆啦A梦、海贼王角色），归入对应动漫子类。
+   - 如果是动漫风格但无法识别具体作品 -> 动漫/通用
+
+### B. 人像分类决策树
+
+1. **卡通简笔画**：
+   - **特征**：线条简单、Q版、可爱风格、非写实。
+   - 归类为：人像/卡通简笔画
+
+2. **氛围感**：
+   - **特征**：不露脸（背影/遮挡/模糊）、重光影意境。
+   - 归类为：人像/氛围感
+
+3. **甜妹**：
+   - **特征**：甜美可爱、少女感、清新风格。
+   - 归类为：人像/甜妹
+
+4. **背影**：
+   - **特征**：主要展示背影，看不到正面。
+   - 归类为：人像/背影
+
+### C. 萌宠与表情包决策树
+
+1. **表情包**：
+   - **特征**：搞怪表情、夸张动作、用于聊天表达情绪。
+   - 归类为：表情包/搞怪
+
+2. **萌宠**：
+   - 真实的猫狗照片 -> 萌宠/猫咪 或 萌宠/狗狗
+
+### D. 插画决策树
+
+1. **二次元插画**：
+   - **特征**：动漫风格的插画，但非特定IP。
+   - 归类为：插画/二次元
+
+2. **创意插画**：
+   - **特征**：创意设计、抽象风格、艺术感强。
+   - 归类为：插画/创意
+
+## 3. 任务规则
+
+### 任务一：归类与提案
+
+- **必须**从现有列表中选择 \`secondary\` 和 \`third\`。
+- **新分类提案 (Proposal)**：
+  - 如果图片是**现有库中缺失**的知名IP或角色。
+  - 请在 \`new_category_proposal\` 中填写建议。
+  - 示例：归类选 \`IP形象/通用\`，提案写 \`IP形象/玲娜贝儿\`。
+
+### 任务二：文案生成
+
+- **标题 (displayTitle)**:：
+  - 8-15个汉字，高雅、富有诗意。
+  - 头像类图片标题可以更简洁活泼。
+
+- **文件名 (filenames)**：
+  - **提供两个不同的中文文件名**（8-15个汉字）。
+  - 禁止英文命名，禁止包含"头像"二字
+  - 侧重于**具体描述**，方便检索。
+  - 结构：修饰形容词 + '主体' + '特征或风格' + '.jpg'。
+  - ❌拒绝太短（如"女孩.jpg"）、拒绝包含"头像"（如"可爱头像.jpg"）。
+  - ✅示例：
+    - '可爱粉色系凯蒂猫卡通形象.jpg'
+    - '甜美风格Hello Kitty萌系插画.jpg'
+    - '治愈系柴犬阳光下奔跑.jpg'
+
+- **关键词 (keywords)**：
+  - 3-5个精准中文词，包含风格定义词。
+
+## 4. 输出格式 (JSON Only)
+
+请严格输出纯 JSON 格式，不要包含 markdown 标记：
+
+{
+  "secondary": "从现有列表中选择",
+  "third": "从现有列表中选择",
+  "is_perfect_match": true/false,
+  "new_category_proposal": {
+    "suggested_secondary": "建议二级(无则null)",
+    "suggested_third": "建议三级(如具体IP名)",
+    "reason": "提案理由"
+  },
+  "displayTitle": "诗意中文标题",
+  "filenames": ["可爱粉色系凯蒂猫卡通形象.jpg", "甜美风格Hello Kitty萌系插画.jpg"],
+  "keywords": ["关键词1", "关键词2", "关键词3"],
+  "description": "20-40字优美描述",
+  "reasoning": "逻辑链说明。例如：'识别出Hello Kitty角色特征，根据规则A1，判定为[IP形象/Hello Kitty]'"
+}`
+  }
 }
 
 async function startAnalysis() {
@@ -461,10 +714,7 @@ async function startAnalysis() {
     return
   }
 
-  // 获取实际使用的 API Key
-  const apiKey = isProduction.value ? config.value.apiKey : import.meta.env.VITE_DOUBAO_API_KEY
-
-  if (!apiKey) {
+  if (!config.value.apiKey) {
     ElMessage.error('未配置 API Key')
     return
   }
@@ -483,29 +733,36 @@ async function startAnalysis() {
     const imageBase64 = await compressImage(selectedFile.value)
     const prompt = buildPrompt()
 
-    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
+    const response = await fetch('https://api-inference.modelscope.cn/v1/messages', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${config.value.apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: config.value.endpointId,
-        input: [
+        model: config.value.model,
+        messages: [
           {
             role: 'user',
             content: [
               {
-                type: 'input_image',
-                image_url: imageBase64
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: imageBase64
+                }
               },
               {
-                type: 'input_text',
+                type: 'text',
                 text: prompt
               }
             ]
           }
-        ]
+        ],
+        max_tokens: 2048,
+        temperature: 0.2, // 较低的随机性，确保分类准确且稳定
+        top_p: 0.8 // 降低多样性，提高一致性
       })
     })
 
@@ -513,13 +770,14 @@ async function startAnalysis() {
     progress.value = 100
 
     if (!response.ok) {
-      throw new Error(`API 请求失败: ${response.status}`)
+      const errorData = await response.json()
+      throw new Error(`API 请求失败: ${JSON.stringify(errorData)}`)
     }
 
     const data = await response.json()
 
-    const outputMessage = data.output?.find(item => item.type === 'message')
-    const textContent = outputMessage?.content?.find(c => c.type === 'output_text')
+    // 解析 ModelScope 响应
+    const textContent = data.content?.find(c => c.type === 'text')
     const aiText = textContent?.text || ''
 
     const jsonMatch = aiText.match(/\{[\s\S]*\}/)
@@ -535,13 +793,14 @@ async function startAnalysis() {
         primary: primaryCategory.value,
         secondary: parsed.secondary || '通用',
         third: parsed.third || '通用',
-        filenameSuggestions: [
-          parsed.filename,
-          `${parsed.filename}-${Date.now().toString().slice(-6)}`,
+        filenameSuggestions: parsed.filenames || [
+          parsed.filename || parsed.displayTitle,
           `${parsed.secondary}-${parsed.keywords?.[0] || '图片'}`
         ],
         keywords: parsed.keywords || [],
-        description: parsed.description || '无描述'
+        description: parsed.description || parsed.reasoning || '无描述',
+        reasoning: parsed.reasoning,
+        newCategoryProposal: parsed.new_category_proposal
       },
       raw: data
     }
@@ -559,8 +818,8 @@ async function startAnalysis() {
   }
 }
 
-// 页面加载时自动加载配置
-loadConfig()
+// 页面加载时自动加载配置（可选）
+// loadConfig()
 </script>
 
 <style lang="scss" scoped>
@@ -667,6 +926,23 @@ loadConfig()
     }
   }
 
+  .image-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #f5f5f5;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+
+    img {
+      max-width: 100%;
+      max-height: 400px;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+  }
+
   .filename-list {
     display: flex;
     flex-direction: column;
@@ -691,6 +967,17 @@ loadConfig()
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  .proposal {
+    .proposal-reason {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #666;
+      background: #fff9e6;
+      padding: 8px;
+      border-radius: 4px;
+    }
   }
 
   .raw-json {

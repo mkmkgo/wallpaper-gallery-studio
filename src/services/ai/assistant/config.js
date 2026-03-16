@@ -9,7 +9,73 @@ import { AI_PROVIDERS } from '../core'
  * 助手服务的模型配置
  */
 export const ASSISTANT_MODELS = {
-  // Groq AI 模型（默认推荐）
+  // ModelScope AI 模型（默认推荐，精确优先）
+  'modelscope-qwen3-vl-235b': {
+    id: 'Qwen/Qwen3-VL-235B-A22B-Instruct',
+    name: 'Qwen3 VL 235B',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'Qwen3 最强视觉模型',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: true,
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low'
+  },
+
+  'modelscope-qwen3-vl-8b-thinking': {
+    id: 'Qwen/Qwen3-VL-8B-Thinking',
+    name: 'Qwen3 VL 8B Thinking',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'Qwen3 推理模型，深度思考分析',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false,
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low'
+  },
+
+  'modelscope-internvl3-241b': {
+    id: 'OpenGVLab/InternVL3_5-241B-A28B',
+    name: 'InternVL3.5 241B',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'InternVL3.5 视觉模型，备选方案',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false,
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low'
+  },
+
+  'modelscope-qvq-72b': {
+    id: 'Qwen/QVQ-72B-Preview',
+    name: 'QVQ 72B Preview',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'QVQ 视觉问答模型，72B 参数',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false,
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low'
+  },
+
+  'modelscope-qwen3-vl-8b': {
+    id: 'Qwen/Qwen3-VL-8B-Instruct',
+    name: 'Qwen3 VL 8B',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'Qwen3 视觉模型，速度快',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false,
+    speed: 'fast',
+    accuracy: 'high',
+    cost: 'low'
+  },
+
+  // Groq AI 模型
   'groq-llama-4-scout': {
     id: 'meta-llama/llama-4-scout-17b-16e-instruct',
     name: 'Llama 4 Scout Vision',
@@ -17,12 +83,12 @@ export const ASSISTANT_MODELS = {
     description: 'Groq 最新视觉模型，速度极快',
     maxTokens: 1024,
     temperature: 0.7,
-    recommended: true,
+    recommended: false,
     speed: 'fast',
     accuracy: 'high',
     cost: 'low'
   },
-  // Groq AI - Maverick 模型（更强大的上下文）
+
   'groq-llama-4-maverick': {
     id: 'meta-llama/llama-4-maverick-17b-128e-instruct',
     name: 'Llama 4 Maverick Vision',
@@ -35,19 +101,8 @@ export const ASSISTANT_MODELS = {
     accuracy: 'high',
     cost: 'low'
   },
-  'doubao-1.8': {
-    id: 'doubao-seed-1-8-251228',
-    name: 'Doubao Seed 1.8',
-    provider: AI_PROVIDERS.DOUBAO,
-    description: '豆包最新 1.8 版本',
-    maxTokens: 4096,
-    temperature: 0.7,
-    recommended: false,
-    speed: 'fast',
-    accuracy: 'high',
-    cost: 'low'
-  },
-  // Cloudflare Workers AI - Llama 3.2 11B Vision
+
+  // Cloudflare Workers AI
   'cloudflare-llama-3.2': {
     id: '@cf/meta/llama-3.2-11b-vision-instruct',
     name: 'Llama 3.2 11B Vision (CF)',
@@ -60,7 +115,7 @@ export const ASSISTANT_MODELS = {
     accuracy: 'high',
     cost: 'low'
   },
-  // Cloudflare Workers AI - LLaVA 1.5 7B
+
   'cloudflare-llava-1.5': {
     id: '@cf/llava-hf/llava-1.5-7b-hf',
     name: 'LLaVA 1.5 7B (CF)',
@@ -79,8 +134,8 @@ export const ASSISTANT_MODELS = {
  * 助手服务默认配置
  */
 export const ASSISTANT_CONFIG = {
-  defaultProvider: AI_PROVIDERS.GROQ,
-  defaultModel: 'groq-llama-4-scout',
+  defaultProvider: AI_PROVIDERS.MODELSCOPE,
+  defaultModel: 'modelscope-qwen3-vl-235b',
   defaultSystemPrompt: 'default',
   conversation: {
     maxHistory: 20

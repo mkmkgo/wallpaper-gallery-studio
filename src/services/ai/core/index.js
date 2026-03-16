@@ -10,7 +10,8 @@ export {
   PROVIDER_DISPLAY,
   BaseAIProvider,
   CloudflareProvider,
-  DoubaoProvider
+  GroqProvider,
+  ModelScopeProvider
 } from './providers'
 
 // 导出图片处理相关

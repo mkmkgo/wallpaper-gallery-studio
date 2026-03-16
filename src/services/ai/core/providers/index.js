@@ -1,14 +1,16 @@
 import { CloudflareProvider } from './cloudflare-provider'
-import { DoubaoProvider } from './doubao-provider'
+// import { DoubaoProvider } from './doubao-provider' // 豆包已下架
 import { GroqProvider } from './groq-provider'
+import { ModelScopeProvider } from './modelscope-provider'
 
 /**
  * AI Provider 类型
  */
 export const AI_PROVIDERS = {
   CLOUDFLARE: 'cloudflare',
-  DOUBAO: 'doubao',
-  GROQ: 'groq'
+  // DOUBAO: 'doubao', // 豆包已下架
+  GROQ: 'groq',
+  MODELSCOPE: 'modelscope'
 }
 
 /**
@@ -18,13 +20,14 @@ export const AI_PROVIDERS = {
 export class AIProviderFactory {
   static providers = {
     cloudflare: CloudflareProvider,
-    doubao: DoubaoProvider,
-    groq: GroqProvider
+    // doubao: DoubaoProvider, // 豆包已下架
+    groq: GroqProvider,
+    modelscope: ModelScopeProvider
   }
 
   /**
    * 创建 Provider 实例
-   * @param {string} type - Provider 类型 (cloudflare, doubao)
+   * @param {string} type - Provider 类型 (cloudflare, groq, modelscope)
    * @param {Object} config - Provider 配置
    * @returns {BaseAIProvider}
    */
@@ -58,21 +61,11 @@ export class AIProviderFactory {
  * Provider 显示配置
  */
 export const PROVIDER_DISPLAY = {
-  [AI_PROVIDERS.CLOUDFLARE]: {
-    name: 'Cloudflare Workers AI',
-    icon: '☁️',
-    color: '#F38020',
-    description: 'Cloudflare 提供的 AI 服务',
-    credentialFields: [
-      { key: 'accountId', label: 'Account ID', type: 'text', required: true },
-      { key: 'apiToken', label: 'API Token', type: 'password', required: true }
-    ]
-  },
-  [AI_PROVIDERS.DOUBAO]: {
-    name: '豆包 AI',
-    icon: '🫘',
-    color: '#00C4CC',
-    description: '字节跳动豆包 AI 服务',
+  [AI_PROVIDERS.MODELSCOPE]: {
+    name: 'ModelScope AI',
+    icon: '🔬',
+    color: '#6B4FBB',
+    description: 'ModelScope Qwen VL 视觉模型',
     credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
   },
   [AI_PROVIDERS.GROQ]: {
@@ -81,8 +74,27 @@ export const PROVIDER_DISPLAY = {
     color: '#F55036',
     description: 'Groq 超快速 AI 推理服务',
     credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
+  },
+  [AI_PROVIDERS.CLOUDFLARE]: {
+    name: 'Cloudflare Workers AI',
+    icon: '☁️',
+    color: '#F38020',
+    description: 'Cloudflare 提供的 AI 服务',
+    disabled: true,
+    credentialFields: [
+      { key: 'accountId', label: 'Account ID', type: 'text', required: true },
+      { key: 'apiToken', label: 'API Token', type: 'password', required: true }
+    ]
   }
+  // 豆包已下架
+  // [AI_PROVIDERS.DOUBAO]: {
+  //   name: '豆包 AI',
+  //   icon: '🫘',
+  //   color: '#00C4CC',
+  //   description: '字节跳动豆包 AI 服务',
+  //   credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
+  // }
 }
 
 export { BaseAIProvider } from './base-provider'
-export { CloudflareProvider, DoubaoProvider, GroqProvider }
+export { CloudflareProvider, GroqProvider, ModelScopeProvider }

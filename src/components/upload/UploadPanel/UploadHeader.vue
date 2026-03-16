@@ -73,9 +73,11 @@
                     :key="p.key"
                     class="upload-header__ai-dropdown-option"
                     :class="{
-                      'upload-header__ai-dropdown-option--active': aiConfig?.provider === p.key
+                      'upload-header__ai-dropdown-option--active': aiConfig?.provider === p.key,
+                      'upload-header__ai-dropdown-option--disabled': p.disabled
                     }"
-                    @click="$emit('provider-change', p.key)"
+                    :disabled="p.disabled"
+                    @click="!p.disabled && $emit('provider-change', p.key)"
                   >
                     <span>{{ p.icon }}</span>
                     <span>{{ p.name }}</span>
@@ -419,6 +421,12 @@ async function handleModeChange(mode) {
         background: rgba($primary-start, 0.15);
         border-color: rgba($primary-start, 0.4);
         color: $white;
+      }
+
+      &--disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
       }
     }
 

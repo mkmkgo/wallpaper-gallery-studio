@@ -124,11 +124,11 @@ export const useUploadStore = defineStore('upload', () => {
         if (file.size > 20 * 1024 * 1024) {
           try {
             const result = await imageCompressor.compress(file, {
-              maxWidth: 7680,  // 支持8K分辨率
+              maxWidth: 7680, // 支持8K分辨率
               maxHeight: 4320,
               maxPixels: 33177600, // 8K像素总数，支持非标准尺寸
-              quality: 0.95,   // 更高质量
-              maxSizeMB: 20    // 更大的目标大小
+              quality: 0.95, // 更高质量
+              maxSizeMB: 20 // 更大的目标大小
             })
 
             if (result.compressed) {
@@ -865,10 +865,17 @@ export const useUploadStore = defineStore('upload', () => {
 
     const model = providerModels.find(m => m.key === modelKey)
 
+    const providerDisplay = {
+      groq: { name: 'Groq AI', icon: '⚡' },
+      modelscope: { name: 'ModelScope AI', icon: '🔬' },
+      cloudflare: { name: 'Cloudflare AI', icon: '☁️' }
+    }
+    const display = providerDisplay[provider] || { name: provider, icon: '🤖' }
+
     return {
       provider,
-      providerName: provider === 'doubao' ? '豆包 AI' : 'Cloudflare AI',
-      providerIcon: provider === 'doubao' ? '🫘' : '☁️',
+      providerName: display.name,
+      providerIcon: display.icon,
       modelKey,
       modelName: model?.name || modelKey,
       availableModels: providerModels

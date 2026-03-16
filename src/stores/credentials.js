@@ -25,8 +25,11 @@ export const useCredentialsStore = defineStore('credentials', () => {
   const apiToken = ref('')
   const workerUrl = ref(AI_CONFIG.workerUrl)
 
-  // 豆包凭证
-  const doubaoApiKey = ref('')
+  // 豆包凭证（已下架）
+  // const doubaoApiKey = ref('')
+
+  // ModelScope 凭证
+  const modelScopeApiKey = ref('')
 
   // Groq 凭证
   const groqApiKey = ref('')
@@ -49,9 +52,15 @@ export const useCredentialsStore = defineStore('credentials', () => {
     return !!(envAccountId && envApiToken)
   })
 
-  // 环境变量中是否有豆包凭证
-  const hasDoubaoEnvCredentials = computed(() => {
-    const envApiKey = import.meta.env.VITE_DOUBAO_API_KEY
+  // 环境变量中是否有豆包凭证（已下架）
+  // const hasDoubaoEnvCredentials = computed(() => {
+  //   const envApiKey = import.meta.env.VITE_DOUBAO_API_KEY
+  //   return !!envApiKey
+  // })
+
+  // 环境变量中是否有 ModelScope 凭证
+  const hasModelScopeEnvCredentials = computed(() => {
+    const envApiKey = import.meta.env.VITE_MODELSCOPE_API_KEY
     return !!envApiKey
   })
 
@@ -65,10 +74,10 @@ export const useCredentialsStore = defineStore('credentials', () => {
   const hasCredentials = computed(() => {
     return (
       hasCloudflareEnvCredentials.value ||
-      hasDoubaoEnvCredentials.value ||
+      hasModelScopeEnvCredentials.value ||
       hasGroqEnvCredentials.value ||
       !!(accountId.value && apiToken.value) ||
-      !!doubaoApiKey.value ||
+      !!modelScopeApiKey.value ||
       !!groqApiKey.value
     )
   })
@@ -91,17 +100,25 @@ export const useCredentialsStore = defineStore('credentials', () => {
     }
   })
 
-  // 获取豆包凭证
-  const doubaoCredentials = computed(() => {
+  // 获取豆包凭证（已下架）
+  // const doubaoCredentials = computed(() => {
+  //   if (hasDoubaoEnvCredentials.value) {
+  //     return { apiKey: import.meta.env.VITE_DOUBAO_API_KEY }
+  //   }
+  //   return { apiKey: doubaoApiKey.value }
+  // })
+
+  // 获取 ModelScope 凭证
+  const modelScopeCredentials = computed(() => {
     // 优先使用环境变量
-    if (hasDoubaoEnvCredentials.value) {
+    if (hasModelScopeEnvCredentials.value) {
       return {
-        apiKey: import.meta.env.VITE_DOUBAO_API_KEY
+        apiKey: import.meta.env.VITE_MODELSCOPE_API_KEY
       }
     }
     // 否则使用手动输入的
     return {
-      apiKey: doubaoApiKey.value
+      apiKey: modelScopeApiKey.value
     }
   })
 
@@ -123,8 +140,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
   function getCredentialsByProvider(provider) {
     if (provider === AI_PROVIDERS.CLOUDFLARE) {
       return cloudflareCredentials.value
-    } else if (provider === AI_PROVIDERS.DOUBAO) {
-      return doubaoCredentials.value
+    } else if (provider === AI_PROVIDERS.MODELSCOPE) {
+      return modelScopeCredentials.value
     } else if (provider === AI_PROVIDERS.GROQ) {
       return groqCredentials.value
     }
@@ -134,7 +151,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
   const credentialsSource = computed(() => {
     if (
       hasCloudflareEnvCredentials.value ||
-      hasDoubaoEnvCredentials.value ||
+      hasModelScopeEnvCredentials.value ||
       hasGroqEnvCredentials.value
     ) {
       return '环境变量'
@@ -142,41 +159,41 @@ export const useCredentialsStore = defineStore('credentials', () => {
     return '手动输入'
   })
 
-  // 默认 Provider（优先使用 Groq，其次豆包，最后 Cloudflare）
+  // 默认 Provider（优先使用 ModelScope，其次 Groq，最后 Cloudflare）
   const defaultProvider = computed(() => {
-    // 优先检查 Groq
+    // 优先检查 ModelScope
+    if (hasModelScopeEnvCredentials.value || modelScopeApiKey.value) {
+      return AI_PROVIDERS.MODELSCOPE
+    }
+    // 其次检查 Groq
     if (hasGroqEnvCredentials.value || groqApiKey.value) {
       return AI_PROVIDERS.GROQ
-    }
-    // 其次检查豆包
-    if (hasDoubaoEnvCredentials.value || doubaoApiKey.value) {
-      return AI_PROVIDERS.DOUBAO
     }
     // 最后检查 Cloudflare
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
       return AI_PROVIDERS.CLOUDFLARE
     }
-    // 默认返回 Groq
-    return AI_PROVIDERS.GROQ
+    // 默认返回 ModelScope
+    return AI_PROVIDERS.MODELSCOPE
   })
 
   // 可用的 Provider 列表
   const availableProviders = computed(() => {
     const providers = []
+    if (hasModelScopeEnvCredentials.value || modelScopeApiKey.value) {
+      providers.push({
+        key: AI_PROVIDERS.MODELSCOPE,
+        name: 'ModelScope AI',
+        icon: '🔬',
+        source: hasModelScopeEnvCredentials.value ? '环境变量' : '手动配置'
+      })
+    }
     if (hasGroqEnvCredentials.value || groqApiKey.value) {
       providers.push({
         key: AI_PROVIDERS.GROQ,
         name: 'Groq AI',
         icon: '⚡',
         source: hasGroqEnvCredentials.value ? '环境变量' : '手动配置'
-      })
-    }
-    if (hasDoubaoEnvCredentials.value || doubaoApiKey.value) {
-      providers.push({
-        key: AI_PROVIDERS.DOUBAO,
-        name: '豆包 AI',
-        icon: '🫘',
-        source: hasDoubaoEnvCredentials.value ? '环境变量' : '手动配置'
       })
     }
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
@@ -317,14 +334,13 @@ export const useCredentialsStore = defineStore('credentials', () => {
    * @param {Object} credentials - 凭证对象
    * @param {string} credentials.accountId - Cloudflare Account ID
    * @param {string} credentials.apiToken - Cloudflare API Token
-   * @param {string} credentials.doubaoApiKey - 豆包 API Key
    * @param {string} credentials.groqApiKey - Groq API Key
    */
   async function saveCredentials(credentials) {
     try {
       if (credentials.accountId) accountId.value = credentials.accountId
       if (credentials.apiToken) apiToken.value = credentials.apiToken
-      if (credentials.doubaoApiKey) doubaoApiKey.value = credentials.doubaoApiKey
+      if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
       if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
 
       const encryptedData = {}
@@ -335,8 +351,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
       if (credentials.apiToken) {
         encryptedData.apiToken = await encryptData(credentials.apiToken)
       }
-      if (credentials.doubaoApiKey) {
-        encryptedData.doubaoApiKey = await encryptData(credentials.doubaoApiKey)
+      if (credentials.modelScopeApiKey) {
+        encryptedData.modelScopeApiKey = await encryptData(credentials.modelScopeApiKey)
       }
       if (credentials.groqApiKey) {
         encryptedData.groqApiKey = await encryptData(credentials.groqApiKey)
@@ -375,7 +391,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
       const envCloudflareAccountId = import.meta.env.VITE_CLOUDFLARE_ACCOUNT_ID
       const envCloudflareApiToken = import.meta.env.VITE_CLOUDFLARE_API_TOKEN
       const envWorkerUrl = import.meta.env.VITE_WORKER_URL
-      const envDoubaoApiKey = import.meta.env.VITE_DOUBAO_API_KEY
+      const envModelScopeApiKey = import.meta.env.VITE_MODELSCOPE_API_KEY
       const envGroqApiKey = import.meta.env.VITE_GROQ_API_KEY
 
       if (envCloudflareAccountId && envCloudflareApiToken) {
@@ -386,9 +402,9 @@ export const useCredentialsStore = defineStore('credentials', () => {
         mode.value = 'env'
       }
 
-      if (envDoubaoApiKey) {
-        console.log('[Credentials] Loading Doubao credentials from environment')
-        doubaoApiKey.value = envDoubaoApiKey
+      if (envModelScopeApiKey) {
+        console.log('[Credentials] Loading ModelScope credentials from environment')
+        modelScopeApiKey.value = envModelScopeApiKey
         mode.value = 'env'
       }
 
@@ -401,7 +417,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
       // 如果环境变量中有凭证，直接返回
       if (
         hasCloudflareEnvCredentials.value ||
-        hasDoubaoEnvCredentials.value ||
+        hasModelScopeEnvCredentials.value ||
         hasGroqEnvCredentials.value
       ) {
         encrypted.value = false
@@ -428,8 +444,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
         if (credentials.apiToken) {
           apiToken.value = await decryptData(credentials.apiToken)
         }
-        if (credentials.doubaoApiKey) {
-          doubaoApiKey.value = await decryptData(credentials.doubaoApiKey)
+        if (credentials.modelScopeApiKey) {
+          modelScopeApiKey.value = await decryptData(credentials.modelScopeApiKey)
         }
         if (credentials.groqApiKey) {
           groqApiKey.value = await decryptData(credentials.groqApiKey)
@@ -438,7 +454,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
         // 兼容旧版本未加密的数据
         if (credentials.accountId) accountId.value = credentials.accountId
         if (credentials.apiToken) apiToken.value = credentials.apiToken
-        if (credentials.doubaoApiKey) doubaoApiKey.value = credentials.doubaoApiKey
+        if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
         if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
       }
 
@@ -537,7 +553,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
   function clearCredentials() {
     accountId.value = ''
     apiToken.value = ''
-    doubaoApiKey.value = ''
+    modelScopeApiKey.value = ''
     groqApiKey.value = ''
     mode.value = 'manual'
     lastVerified.value = null
@@ -572,7 +588,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
     mode,
     accountId,
     apiToken,
-    doubaoApiKey,
+    modelScopeApiKey,
     groqApiKey,
     workerUrl,
     encrypted,
@@ -583,10 +599,10 @@ export const useCredentialsStore = defineStore('credentials', () => {
     // Computed
     hasCredentials,
     hasCloudflareEnvCredentials,
-    hasDoubaoEnvCredentials,
+    hasModelScopeEnvCredentials,
     hasGroqEnvCredentials,
     cloudflareCredentials,
-    doubaoCredentials,
+    modelScopeCredentials,
     groqCredentials,
     credentialsSource,
     defaultProvider,

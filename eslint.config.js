@@ -51,6 +51,7 @@ export default [
       'prettier/prettier': 'warn',
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'off',
+      'vue/no-v-model-argument': 'off',
       'vue/require-default-prop': 'off',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-console': 'off',

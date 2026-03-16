@@ -13,9 +13,9 @@
       <!-- 左栏：配置区（可滚动） -->
       <div class="left-column">
         <!-- 凭证配置（仅生产环境显示） -->
-        <div v-if="credentialsStore.isProduction" class="config-section">
+        <!-- <div v-if="credentialsStore.isProduction" class="config-section">
           <CredentialsConfig />
-        </div>
+        </div> -->
 
         <!-- Provider 选择 -->
         <el-card class="config-card compact" shadow="hover">
@@ -35,6 +35,7 @@
               v-for="(display, providerKey) in PROVIDER_DISPLAY"
               :key="providerKey"
               :value="providerKey"
+              :disabled="display.disabled"
             >
               <div class="provider-option">
                 <span class="provider-icon">{{ display.icon }}</span>
@@ -83,8 +84,9 @@
         <div class="config-section">
           <PromptTemplateSelector
             v-model="aiStore.promptTemplate"
-            v-model:custom-prompt="customPrompt"
+            :custom-prompt="customPrompt"
             :primary-category="primaryCategory"
+            @update:custom-prompt="val => (customPrompt = val)"
           />
         </div>
       </div>
@@ -108,7 +110,7 @@
           </el-alert>
 
           <el-upload
-            v-model:file-list="fileList"
+            :file-list="fileList"
             drag
             multiple
             :auto-upload="false"
@@ -201,7 +203,7 @@ import { useCredentialsStore } from '@/stores/credentials'
 import { AI_PROVIDERS, PROVIDER_DISPLAY } from '@/services/ai/core'
 import { getModelList, getRecommendedModel, ASSISTANT_CONFIG } from '@/services/ai/assistant'
 import { detectImageTypeFromFile } from '@/utils/image-detector'
-import CredentialsConfig from '@/components/ai/CredentialsConfig.vue'
+// import CredentialsConfig from '@/components/ai/CredentialsConfig.vue'
 import PromptTemplateSelector from '@/components/ai/PromptTemplateSelector.vue'
 import ResultCard from '@/components/ai/ResultCard.vue'
 

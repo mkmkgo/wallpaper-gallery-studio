@@ -218,11 +218,12 @@ const rateLimit = computed(() => uploadStore.getRateLimit())
 // AI 配置
 const aiConfig = computed(() => uploadStore.getCurrentAiConfig())
 
-// 上传页面只显示分类器支持的 providers（Groq 和豆包）
+// 上传页面显示所有可用的 AI Providers（Cloudflare 暂不可用）
 const availableProviders = computed(() => {
-  const allProviders = credentialsStore.availableProviders
-  // 只保留 groq 和 doubao
-  return allProviders.filter(p => ['groq', 'doubao'].includes(p.key))
+  return credentialsStore.availableProviders.map(p => ({
+    ...p,
+    disabled: p.key === 'cloudflare'
+  }))
 })
 
 const categoryCache = new Map()
@@ -510,7 +511,7 @@ function handleProviderChange(provider) {
   uploadStore.setAiProvider(provider)
   const providerNames = {
     groq: 'Groq AI',
-    doubao: '豆包 AI',
+    modelscope: 'ModelScope AI',
     cloudflare: 'Cloudflare AI'
   }
   ElMessage.success(`已切换到 ${providerNames[provider] || provider}`)

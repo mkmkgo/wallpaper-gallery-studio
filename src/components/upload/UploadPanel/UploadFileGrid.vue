@@ -308,19 +308,20 @@ defineExpose({
 }
 
 // 过渡动画
-.grid-enter-active,
-.grid-leave-active {
-  transition: all $duration-normal $ease-out;
+.grid-enter-active {
+  transition: opacity $duration-normal $ease-out;
 }
 
-.grid-enter-from,
+.grid-leave-active {
+  transition: opacity $duration-fast $ease-out;
+}
+
+.grid-enter-from {
+  opacity: 0;
+}
+
 .grid-leave-to {
   opacity: 0;
-  transform: scale(0.8);
-}
-
-.grid-leave-active {
-  position: absolute;
 }
 
 .grid-move {
