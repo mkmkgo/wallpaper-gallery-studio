@@ -20,10 +20,8 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
 const UPLOAD_DELAY = 500 // 上传间隔 500ms，避免触发限流
 const BATCH_WARNING_THRESHOLD = 50 // 超过 50 张提示警告
 
-// 元数据仓库配置
+// 元数据仓库配置（owner/repo 从 config store 读取，与上传目标仓库一致）
 const METADATA_REPO = {
-  owner: 'IT-NuanxinPro',
-  repo: 'nuanXinProPic',
   branch: 'main',
   pendingDir: 'metadata-pending'
 }
@@ -759,12 +757,12 @@ export const useUploadStore = defineStore('upload', () => {
       const content = JSON.stringify(pendingData, null, 2)
 
       await githubService.createFile(
-        METADATA_REPO.owner,
-        METADATA_REPO.repo,
+        owner,
+        repo,
         pendingPath,
         content,
         `Add pending metadata: ${pendingFilename}`,
-        METADATA_REPO.branch
+        branch
       )
 
       console.log(`Metadata pending file created: ${pendingPath}`)

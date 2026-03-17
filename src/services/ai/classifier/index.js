@@ -10,6 +10,7 @@ export { analyzeImage, analyzeBatch, validateCredentials } from './service'
 // 配置
 export {
   CLASSIFIER_CONFIG,
+  ASSISTANT_CONFIG,
   CLASSIFIER_MODELS,
   SPEED_LEVELS,
   ACCURACY_LEVELS,

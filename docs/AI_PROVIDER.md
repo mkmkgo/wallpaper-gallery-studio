@@ -1,375 +1,208 @@
-# AI Provider 架构设计文档
+# AI Provider 架构文档
 
 ## 概述
 
-本文档描述了壁纸管理系统中 AI 服务的架构设计，支持多个 AI 服务商（Cloudflare Workers AI、豆包 AI 等）的集成。
+AI 服务层采用 Provider 模式，支持多个 AI 服务商的统一接入。所有 Provider 实现相同的接口，上层业务代码无需关心具体使用哪个服务商。
 
-## 设计目标
+## 目录结构
 
-1. **可扩展性**：轻松添加新的 AI 服务商
-2. **配置化**：通过配置文件管理模型和服务商
-3. **解耦**：组件之间低耦合，易于维护
-4. **统一接口**：不同 Provider 提供一致的调用方式
+```
+src/services/ai/
+├── core/                        # 核心层（共享）
+│   ├── providers/
+│   │   ├── base-provider.js     # Provider 基类，定义统一接口
+│   │   ├── modelscope-provider.js
+│   │   ├── groq-provider.js
+│   │   ├── nvidia-provider.js
+│   │   ├── cloudflare-provider.js
+│   │   └── index.js             # AIProviderFactory + AI_PROVIDERS + PROVIDER_DISPLAY
+│   ├── image-processor.js       # 图片压缩（compressImage）
+│   └── index.js
+├── classifier/                  # 分类服务（上传页面）
+│   ├── service.js               # analyzeImage / analyzeBatch
+│   ├── prompts.js               # 分类决策树提示词
+│   ├── config.js                # 模型列表 + CLASSIFIER_CONFIG + ASSISTANT_CONFIG
+│   └── index.js
+├── assistant/                   # AI 助手服务（AI 工坊页面）
+│   ├── service.js               # sendMessage / analyzeImage
+│   ├── prompts.js               # 对话式系统提示词
+│   ├── config.js                # 从 classifier/config 重新导出（共享模型列表）
+│   └── index.js
+└── index.js                     # 统一导出
+```
 
 ## 架构图
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     UI Layer                             │
-│  ┌──────────────────┐  ┌──────────────────────────┐    │
-│  │ AIAssistantPanel │  │ AIProviderSelector       │    │
-│  └──────────────────┘  └──────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Service Layer                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │           ai-classifier.js                        │  │
-│  │  (统一的分类服务接口)                              │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Provider Layer                          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │         AIProviderFactory                         │  │
-│  │  (Provider 工厂，创建具体实例)                     │  │
-│  └──────────────────────────────────────────────────┘  │
-│                            │                             │
-│         ┌──────────────────┼──────────────────┐         │
-│         ▼                  ▼                  ▼         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
-│  │ Cloudflare  │  │   Doubao    │  │   Future    │    │
-│  │  Provider   │  │  Provider   │  │  Provider   │    │
-│  └─────────────┘  └─────────────┘  └─────────────┘    │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Config Layer                            │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │           ai-models.js                            │  │
-│  │  (模型配置、Provider 配置)                         │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│                   UI Layer                       │
+│   UploadPanel / AIAssistantPanel                 │
+└─────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│                 Store Layer                      │
+│   stores/ai.js  /  stores/upload.js             │
+└─────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│               Service Layer                      │
+│   classifier/service.js  assistant/service.js   │
+└─────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│              Provider Layer                      │
+│          AIProviderFactory.create()              │
+│                      │                           │
+│   ┌──────────┬───────┴──────┬──────────────┐    │
+│   │ModelScope│     Groq     │    NVIDIA    │    │
+│   │Provider  │   Provider   │   Provider   │    │
+│   └──────────┴──────────────┴──────────────┘    │
+└─────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│               Config Layer                       │
+│         classifier/config.js                     │
+│   CLASSIFIER_MODELS / CLASSIFIER_CONFIG          │
+│   ASSISTANT_CONFIG（共享，从此处导出）            │
+└─────────────────────────────────────────────────┘
 ```
 
-## 核心组件
+## 当前支持的 Provider
 
-### 1. BaseAIProvider (基类)
+| Provider | 常量 | 特点 | CORS |
+| -------- | ---- | ---- | ---- |
+| ModelScope | `AI_PROVIDERS.MODELSCOPE` | 免费，国内稳定，模型丰富 | 支持直连 |
+| Groq | `AI_PROVIDERS.GROQ` | 速度极快，免费额度充足 | 支持直连 |
+| NVIDIA NIM | `AI_PROVIDERS.NVIDIA` | 视觉模型选择最多 | 本地需 Vite proxy，线上直连 |
+| Cloudflare | `AI_PROVIDERS.CLOUDFLARE` | 需要 Worker 代理 | 需要 Worker |
 
-**位置**: `src/services/ai-providers/base-provider.js`
+## 模型配置
 
-**职责**:
+所有模型统一在 `src/services/ai/classifier/config.js` 的 `CLASSIFIER_MODELS` 中维护，`assistant/config.js` 直接从这里重新导出，两个服务共享同一份模型列表。
 
-- 定义统一的 Provider 接口
-- 提供基础方法（analyze、validateCredentials）
-
-**接口**:
-
-```javascript
-class BaseAIProvider {
-  async analyze({ imageBase64, prompt, credentials })
-  validateCredentials(credentials)
-  getName()
-}
-```
-
-### 2. 具体 Provider 实现
-
-#### CloudflareProvider
-
-**位置**: `src/services/ai-providers/cloudflare-provider.js`
-
-**特点**:
-
-- 调用 Cloudflare Workers AI API
-- 支持 Llama 3.2 Vision 模型
-- 需要 Account ID 和 API Token
-
-#### DoubaoProvider
-
-**位置**: `src/services/ai-providers/doubao-provider.js`
-
-**特点**:
-
-- 调用豆包 AI API
-- 支持 Doubao Seed 1.6/1.8 模型
-- 需要 API Key
-
-### 3. AIProviderFactory (工厂)
-
-**位置**: `src/services/ai-providers/index.js`
-
-**职责**:
-
-- 根据类型创建 Provider 实例
-- 管理 Provider 注册
-- 提供 Provider 列表
-
-**使用示例**:
-
-```javascript
-const provider = AIProviderFactory.create('doubao', config)
-const result = await provider.analyze({ imageBase64, prompt, credentials })
-```
-
-### 4. AI 分类服务
-
-**位置**: `src/services/ai-classifier.js`
-
-**职责**:
-
-- 提供统一的图片分析接口
-- 调用具体的 Provider
-- 处理结果格式化
-
-**API**:
-
-```javascript
-analyzeImage({ file, prompt, providerType, credentials, modelId })
-analyzeBatch({ files, prompt, providerType, credentials, modelId, onProgress })
-validateCredentials(providerType, credentials)
-```
-
-### 5. 配置管理
-
-**位置**: `src/config/ai-models.js`
-
-**内容**:
-
-- AI_PROVIDERS: Provider 类型常量
-- AI_MODELS: 所有模型配置
-- PROVIDER_DISPLAY: Provider 显示配置
-- 工具函数: getModelsByProvider、getModelById 等
-
-**模型配置示例**:
-
-```javascript
-{
-  id: 'doubao-seed-1-6-vision-250815',
-  name: 'Doubao Seed 1.6 Vision',
-  provider: 'doubao',
-  description: '豆包视觉模型 1.6 版本',
-  maxTokens: 4096,
-  recommended: true
-}
-```
-
-### 6. UI 组件
-
-#### AIProviderSelector
-
-**位置**: `src/components/ai/AIProviderSelector.vue`
-
-**功能**:
-
-- Provider 选择
-- 模型选择
-- 凭证配置
-- 配置保存/加载
-- 连接测试
-
-## 使用流程
-
-### 1. 配置 AI Provider
-
-```vue
-<template>
-  <AIProviderSelector
-    @update:provider="handleProviderChange"
-    @update:model="handleModelChange"
-    @update:credentials="handleCredentialsChange"
-  />
-</template>
-
-<script setup>
-import AIProviderSelector from '@/components/ai/AIProviderSelector.vue'
-
-function handleProviderChange(provider) {
-  console.log('Provider changed:', provider)
-}
-
-function handleModelChange(model) {
-  console.log('Model changed:', model)
-}
-
-function handleCredentialsChange(credentials) {
-  console.log('Credentials changed:', credentials)
-}
-</script>
-```
-
-### 2. 调用 AI 分析
-
-```javascript
-import { analyzeImage } from '@/services/ai-classifier'
-import { buildPrompt } from '@/utils/prompt-builder'
-
-// 分析单张图片
-const result = await analyzeImage({
-  file: imageFile,
-  prompt: buildPrompt('desktop'),
-  providerType: 'doubao',
-  credentials: {
-    apiKey: 'your-api-key'
+```js
+export const CLASSIFIER_MODELS = {
+  'modelscope-qwen3-vl-235b': {
+    id: 'Qwen/Qwen3-VL-235B-A22B-Instruct',
+    name: 'Qwen3 VL 235B',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: true
   },
-  modelId: 'doubao-seed-1-6-vision-250815'
-})
-
-console.log(result.filenameSuggestions)
-console.log(result.category)
-console.log(result.keywords)
-```
-
-### 3. 批量分析
-
-```javascript
-import { analyzeBatch } from '@/services/ai-classifier'
-
-const results = await analyzeBatch({
-  files: [file1, file2, file3],
-  prompt: buildPrompt('mobile'),
-  providerType: 'cloudflare',
-  credentials: {
-    accountId: 'your-account-id',
-    apiToken: 'your-token'
-  },
-  modelId: '@cf/meta/llama-3.2-11b-vision-instruct',
-  onProgress: (current, total) => {
-    console.log(`Progress: ${current}/${total}`)
-  }
-})
+  // ...
+}
 ```
 
 ## 添加新 Provider
 
-### 步骤 1: 创建 Provider 类
+### 1. 创建 Provider 类
 
-```javascript
-// src/services/ai-providers/new-provider.js
+```js
+// src/services/ai/core/providers/my-provider.js
 import { BaseAIProvider } from './base-provider'
 
-export class NewProvider extends BaseAIProvider {
+export class MyProvider extends BaseAIProvider {
+  constructor(config = {}) {
+    super(config)
+    this.baseUrl = 'https://api.example.com/v1'
+  }
+
   validateCredentials(credentials) {
     return !!credentials?.apiKey
   }
 
   async analyze({ imageBase64, prompt, credentials }) {
-    // 实现 API 调用逻辑
-    const response = await fetch('https://api.example.com/analyze', {
+    const { apiKey, model } = credentials
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${credentials.apiKey}`
-      },
-      body: JSON.stringify({ image: imageBase64, prompt })
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
+      })
     })
-
     const data = await response.json()
     return this.parseResponse(data)
   }
 
   parseResponse(data) {
-    // 解析响应，返回统一格式
+    const text = data.choices?.[0]?.message?.content || ''
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{}')
     return {
-      secondary: data.category,
-      third: data.subcategory,
-      keywords: data.tags,
-      filename: data.suggestedName,
-      description: data.description,
+      secondary: json.secondary || '通用',
+      third: json.third || '通用',
+      keywords: json.keywords || [],
+      filenameSuggestions: json.filenames || [],
+      description: json.description || '',
+      confidence: 0.9,
+      displayTitle: json.displayTitle || null,
+      is_perfect_match: json.is_perfect_match ?? null,
+      new_category_proposal: json.new_category_proposal || null,
+      reasoning: json.reasoning || null,
       raw: data
     }
   }
 }
 ```
 
-### 步骤 2: 注册 Provider
+### 2. 注册到工厂
 
-```javascript
-// src/services/ai-providers/index.js
-import { NewProvider } from './new-provider'
+在 `src/services/ai/core/providers/index.js` 中：
 
-AIProviderFactory.register('newprovider', NewProvider)
-```
+```js
+import { MyProvider } from './my-provider'
 
-### 步骤 3: 添加配置
-
-```javascript
-// src/config/ai-models.js
 export const AI_PROVIDERS = {
-  // ...
-  NEW_PROVIDER: 'newprovider'
-}
-
-export const AI_MODELS = {
-  // ...
-  newprovider: [
-    {
-      id: 'model-v1',
-      name: 'New Provider Model V1',
-      provider: 'newprovider',
-      description: '描述',
-      recommended: true
-    }
-  ]
+  // ...existing...
+  MY_PROVIDER: 'myprovider'
 }
 
 export const PROVIDER_DISPLAY = {
-  // ...
-  newprovider: {
-    name: 'New Provider',
-    icon: '🆕',
-    color: '#FF6B6B',
-    credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
-  }
+  // ...existing...
+  myprovider: { name: 'My Provider', icon: '🆕', disabled: false }
+}
+
+// 在 AIProviderFactory.create() switch 中添加：
+case AI_PROVIDERS.MY_PROVIDER:
+  return new MyProvider(config)
+```
+
+### 3. 添加模型配置
+
+在 `src/services/ai/classifier/config.js` 的 `CLASSIFIER_MODELS` 中添加：
+
+```js
+'myprovider-model-v1': {
+  id: 'model-v1',
+  name: 'My Model V1',
+  provider: AI_PROVIDERS.MY_PROVIDER,
+  description: '描述',
+  speed: 'fast',
+  accuracy: 'high',
+  cost: 'low',
+  maxTokens: 2048,
+  temperature: 0.2,
+  recommended: false
 }
 ```
 
-## 配置存储
+### 4. 添加凭证支持
 
-### LocalStorage 结构
+在 `src/stores/credentials.js` 中参照 `groqApiKey` 的方式添加凭证字段、`hasXxxEnvCredentials` computed、`xxxCredentials` computed，并在 `getCredentialsByProvider` 中添加对应分支。
 
-```javascript
-// 每个 Provider 独立存储
-localStorage.setItem(
-  'ai_config_cloudflare',
-  JSON.stringify({
-    provider: 'cloudflare',
-    model: '@cf/meta/llama-3.2-11b-vision-instruct',
-    credentials: {
-      accountId: 'xxx',
-      apiToken: 'xxx'
-    }
-  })
-)
+## 提示词说明
 
-localStorage.setItem(
-  'ai_config_doubao',
-  JSON.stringify({
-    provider: 'doubao',
-    model: 'doubao-seed-1-6-vision-250815',
-    credentials: {
-      apiKey: 'xxx'
-    }
-  })
-)
-```
+两个服务的提示词职责不同，不共享：
 
-## 优势
-
-1. **低耦合**: 各层职责清晰，互不依赖
-2. **易扩展**: 添加新 Provider 只需 3 步
-3. **配置化**: 模型和 Provider 通过配置管理
-4. **统一接口**: 上层代码无需关心具体 Provider
-5. **易测试**: 每个 Provider 可独立测试
-6. **易维护**: 代码结构清晰，便于定位问题
-
-## 未来扩展
-
-1. **更多 Provider**: OpenAI、Google Gemini、百度文心等
-2. **模型对比**: 同时调用多个模型，对比结果
-3. **缓存机制**: 缓存分析结果，避免重复调用
-4. **错误重试**: 自动重试失败的请求
-5. **性能监控**: 记录各 Provider 的响应时间和成功率
+| 文件 | 用途 |
+| ---- | ---- |
+| `classifier/prompts.js` | 分类决策树，针对 desktop/mobile/avatar 三个系列各有专用提示词，输出严格 JSON |
+| `assistant/prompts.js` | 对话式系统提示词，支持 default/creative/technical 三种角色风格 |

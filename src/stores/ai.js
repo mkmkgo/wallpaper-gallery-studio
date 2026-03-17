@@ -1,18 +1,12 @@
 /**
- * AI Store (兼容层)
- * 保持向后兼容，实际使用新的分类器模块
- * @deprecated 请使用 useAIClassifierStore 或 useAIAssistantStore
+ * AI Store
+ * 统一管理 AI 分析状态，供上传页面和 AI 助手页面使用
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useCredentialsStore } from './credentials'
 import { AIProviderFactory, AI_PROVIDERS, compressImage, IMAGE_CONFIG } from '@/services/ai/core'
-import {
-  buildPrompt,
-  getModelByKey as getClassifierModel,
-  CLASSIFIER_CONFIG
-} from '@/services/ai/classifier'
-import { getModelByKey as getAssistantModel } from '@/services/ai/assistant'
+import { buildPrompt, getModelByKey, CLASSIFIER_CONFIG } from '@/services/ai/classifier'
 
 // 兼容导出
 export { AI_PROVIDERS }
@@ -27,8 +21,7 @@ export const useAIStore = defineStore('ai', () => {
 
   const hasResults = computed(() => results.value.length > 0)
   const currentModelConfig = computed(() => {
-    // 先尝试从 assistant 配置中查找，再从 classifier 配置中查找
-    return getAssistantModel(currentModel.value) || getClassifierModel(currentModel.value)
+    return getModelByKey(currentModel.value)
   })
 
   /**

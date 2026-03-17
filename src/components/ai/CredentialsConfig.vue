@@ -122,9 +122,9 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useCredentialsStore } from '@/stores/credentials'
 
-// 默认配置
+// 默认配置（Worker URL 通过环境变量 VITE_WORKER_URL 配置）
 const AI_CONFIG = {
-  workerUrl: 'https://ai-proxy.han1569250882.workers.dev'
+  workerUrl: import.meta.env.VITE_WORKER_URL || ''
 }
 
 const credentialsStore = useCredentialsStore()

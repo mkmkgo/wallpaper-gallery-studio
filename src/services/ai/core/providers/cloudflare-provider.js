@@ -7,8 +7,8 @@ import { BaseAIProvider } from './base-provider'
 export class CloudflareProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
-    // 使用 Worker 代理 URL
-    this.workerUrl = config.workerUrl || 'https://ai-proxy.han1569250882.workers.dev'
+    // 使用 Worker 代理 URL（通过 VITE_WORKER_URL 环境变量或凭证配置传入）
+    this.workerUrl = config.workerUrl || ''
   }
 
   validateCredentials(credentials) {

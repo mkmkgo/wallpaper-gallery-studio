@@ -8,9 +8,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { AI_PROVIDERS } from '@/services/ai/core'
 
-// 默认配置
+// 默认配置（Worker URL 通过环境变量 VITE_WORKER_URL 配置）
 const AI_CONFIG = {
-  workerUrl: 'https://ai-proxy.han1569250882.workers.dev'
+  workerUrl: import.meta.env.VITE_WORKER_URL || ''
 }
 
 const STORAGE_KEY = 'ai_credentials'
@@ -33,6 +33,9 @@ export const useCredentialsStore = defineStore('credentials', () => {
 
   // Groq 凭证
   const groqApiKey = ref('')
+
+  // NVIDIA 凭证
+  const nvidiaApiKey = ref('')
 
   const encrypted = ref(true)
   const lastVerified = ref(null)
@@ -70,15 +73,23 @@ export const useCredentialsStore = defineStore('credentials', () => {
     return !!envApiKey
   })
 
+  // 环境变量中是否有 NVIDIA 凭证
+  const hasNvidiaEnvCredentials = computed(() => {
+    const envApiKey = import.meta.env.VITE_NVIDIA_API_KEY
+    return !!envApiKey
+  })
+
   // 是否有任何凭证
   const hasCredentials = computed(() => {
     return (
       hasCloudflareEnvCredentials.value ||
       hasModelScopeEnvCredentials.value ||
       hasGroqEnvCredentials.value ||
+      hasNvidiaEnvCredentials.value ||
       !!(accountId.value && apiToken.value) ||
       !!modelScopeApiKey.value ||
-      !!groqApiKey.value
+      !!groqApiKey.value ||
+      !!nvidiaApiKey.value
     )
   })
 
@@ -136,6 +147,18 @@ export const useCredentialsStore = defineStore('credentials', () => {
     }
   })
 
+  // 获取 NVIDIA 凭证
+  const nvidiaCredentials = computed(() => {
+    if (hasNvidiaEnvCredentials.value) {
+      return {
+        apiKey: import.meta.env.VITE_NVIDIA_API_KEY
+      }
+    }
+    return {
+      apiKey: nvidiaApiKey.value
+    }
+  })
+
   // 根据 Provider 获取凭证
   function getCredentialsByProvider(provider) {
     if (provider === AI_PROVIDERS.CLOUDFLARE) {
@@ -144,6 +167,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
       return modelScopeCredentials.value
     } else if (provider === AI_PROVIDERS.GROQ) {
       return groqCredentials.value
+    } else if (provider === AI_PROVIDERS.NVIDIA) {
+      return nvidiaCredentials.value
     }
     return null
   }
@@ -152,28 +177,28 @@ export const useCredentialsStore = defineStore('credentials', () => {
     if (
       hasCloudflareEnvCredentials.value ||
       hasModelScopeEnvCredentials.value ||
-      hasGroqEnvCredentials.value
+      hasGroqEnvCredentials.value ||
+      hasNvidiaEnvCredentials.value
     ) {
       return '环境变量'
     }
     return '手动输入'
   })
 
-  // 默认 Provider（优先使用 ModelScope，其次 Groq，最后 Cloudflare）
+  // 默认 Provider（优先使用 ModelScope，其次 Groq，再 NVIDIA，最后 Cloudflare）
   const defaultProvider = computed(() => {
-    // 优先检查 ModelScope
     if (hasModelScopeEnvCredentials.value || modelScopeApiKey.value) {
       return AI_PROVIDERS.MODELSCOPE
     }
-    // 其次检查 Groq
     if (hasGroqEnvCredentials.value || groqApiKey.value) {
       return AI_PROVIDERS.GROQ
     }
-    // 最后检查 Cloudflare
+    if (hasNvidiaEnvCredentials.value || nvidiaApiKey.value) {
+      return AI_PROVIDERS.NVIDIA
+    }
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
       return AI_PROVIDERS.CLOUDFLARE
     }
-    // 默认返回 ModelScope
     return AI_PROVIDERS.MODELSCOPE
   })
 
@@ -194,6 +219,14 @@ export const useCredentialsStore = defineStore('credentials', () => {
         name: 'Groq AI',
         icon: '⚡',
         source: hasGroqEnvCredentials.value ? '环境变量' : '手动配置'
+      })
+    }
+    if (hasNvidiaEnvCredentials.value || nvidiaApiKey.value) {
+      providers.push({
+        key: AI_PROVIDERS.NVIDIA,
+        name: 'NVIDIA NIM',
+        icon: '🟢',
+        source: hasNvidiaEnvCredentials.value ? '环境变量' : '手动配置'
       })
     }
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
@@ -342,6 +375,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
       if (credentials.apiToken) apiToken.value = credentials.apiToken
       if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
       if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
+      if (credentials.nvidiaApiKey) nvidiaApiKey.value = credentials.nvidiaApiKey
 
       const encryptedData = {}
 
@@ -356,6 +390,9 @@ export const useCredentialsStore = defineStore('credentials', () => {
       }
       if (credentials.groqApiKey) {
         encryptedData.groqApiKey = await encryptData(credentials.groqApiKey)
+      }
+      if (credentials.nvidiaApiKey) {
+        encryptedData.nvidiaApiKey = await encryptData(credentials.nvidiaApiKey)
       }
 
       const encryptedCredentials = {
@@ -393,6 +430,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
       const envWorkerUrl = import.meta.env.VITE_WORKER_URL
       const envModelScopeApiKey = import.meta.env.VITE_MODELSCOPE_API_KEY
       const envGroqApiKey = import.meta.env.VITE_GROQ_API_KEY
+      const envNvidiaApiKey = import.meta.env.VITE_NVIDIA_API_KEY
 
       if (envCloudflareAccountId && envCloudflareApiToken) {
         console.log('[Credentials] Loading Cloudflare credentials from environment')
@@ -414,11 +452,18 @@ export const useCredentialsStore = defineStore('credentials', () => {
         mode.value = 'env'
       }
 
+      if (envNvidiaApiKey) {
+        console.log('[Credentials] Loading NVIDIA credentials from environment')
+        nvidiaApiKey.value = envNvidiaApiKey
+        mode.value = 'env'
+      }
+
       // 如果环境变量中有凭证，直接返回
       if (
         hasCloudflareEnvCredentials.value ||
         hasModelScopeEnvCredentials.value ||
-        hasGroqEnvCredentials.value
+        hasGroqEnvCredentials.value ||
+        hasNvidiaEnvCredentials.value
       ) {
         encrypted.value = false
         loaded.value = true
@@ -450,12 +495,16 @@ export const useCredentialsStore = defineStore('credentials', () => {
         if (credentials.groqApiKey) {
           groqApiKey.value = await decryptData(credentials.groqApiKey)
         }
+        if (credentials.nvidiaApiKey) {
+          nvidiaApiKey.value = await decryptData(credentials.nvidiaApiKey)
+        }
       } else {
         // 兼容旧版本未加密的数据
         if (credentials.accountId) accountId.value = credentials.accountId
         if (credentials.apiToken) apiToken.value = credentials.apiToken
         if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
         if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
+        if (credentials.nvidiaApiKey) nvidiaApiKey.value = credentials.nvidiaApiKey
       }
 
       mode.value = 'manual'
@@ -555,6 +604,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
     apiToken.value = ''
     modelScopeApiKey.value = ''
     groqApiKey.value = ''
+    nvidiaApiKey.value = ''
     mode.value = 'manual'
     lastVerified.value = null
     loaded.value = false
@@ -590,6 +640,7 @@ export const useCredentialsStore = defineStore('credentials', () => {
     apiToken,
     modelScopeApiKey,
     groqApiKey,
+    nvidiaApiKey,
     workerUrl,
     encrypted,
     lastVerified,
@@ -601,9 +652,11 @@ export const useCredentialsStore = defineStore('credentials', () => {
     hasCloudflareEnvCredentials,
     hasModelScopeEnvCredentials,
     hasGroqEnvCredentials,
+    hasNvidiaEnvCredentials,
     cloudflareCredentials,
     modelScopeCredentials,
     groqCredentials,
+    nvidiaCredentials,
     credentialsSource,
     defaultProvider,
     availableProviders,

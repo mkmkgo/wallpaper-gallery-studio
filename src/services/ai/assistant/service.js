@@ -5,7 +5,7 @@
 
 import { AIProviderFactory, compressImage, IMAGE_CONFIG } from '../core'
 import { getSystemPrompt } from './prompts'
-import { getModelByKey } from './config'
+import { getModelByKey } from '../classifier/config'
 
 /**
  * 发送消息给 AI

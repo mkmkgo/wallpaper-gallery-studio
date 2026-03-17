@@ -6,12 +6,12 @@
 import { AIProviderFactory, compressImage, IMAGE_CONFIG } from '../core'
 import { buildPrompt, validatePrompt } from './prompts'
 import { getModelByKey } from './config'
-import { createGroqRateLimiter, createDoubaoRateLimiter } from '@/utils/rateLimiter'
+import { createGroqRateLimiter, createNvidiaRateLimiter } from '@/utils/rateLimiter'
 
 // 为不同 provider 创建速率限制器
 const rateLimiters = {
   groq: createGroqRateLimiter(),
-  doubao: createDoubaoRateLimiter()
+  nvidia: createNvidiaRateLimiter()
 }
 
 /**

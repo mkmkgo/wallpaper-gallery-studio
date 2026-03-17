@@ -2,6 +2,7 @@ import { CloudflareProvider } from './cloudflare-provider'
 // import { DoubaoProvider } from './doubao-provider' // 豆包已下架
 import { GroqProvider } from './groq-provider'
 import { ModelScopeProvider } from './modelscope-provider'
+import { NvidiaProvider } from './nvidia-provider'
 
 /**
  * AI Provider 类型
@@ -10,7 +11,8 @@ export const AI_PROVIDERS = {
   CLOUDFLARE: 'cloudflare',
   // DOUBAO: 'doubao', // 豆包已下架
   GROQ: 'groq',
-  MODELSCOPE: 'modelscope'
+  MODELSCOPE: 'modelscope',
+  NVIDIA: 'nvidia'
 }
 
 /**
@@ -22,7 +24,8 @@ export class AIProviderFactory {
     cloudflare: CloudflareProvider,
     // doubao: DoubaoProvider, // 豆包已下架
     groq: GroqProvider,
-    modelscope: ModelScopeProvider
+    modelscope: ModelScopeProvider,
+    nvidia: NvidiaProvider
   }
 
   /**
@@ -75,6 +78,13 @@ export const PROVIDER_DISPLAY = {
     description: 'Groq 超快速 AI 推理服务',
     credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
   },
+  [AI_PROVIDERS.NVIDIA]: {
+    name: 'NVIDIA NIM',
+    icon: '🟢',
+    color: '#76B900',
+    description: 'NVIDIA NIM 视觉语言模型',
+    credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
+  },
   [AI_PROVIDERS.CLOUDFLARE]: {
     name: 'Cloudflare Workers AI',
     icon: '☁️',
@@ -97,4 +107,4 @@ export const PROVIDER_DISPLAY = {
 }
 
 export { BaseAIProvider } from './base-provider'
-export { CloudflareProvider, GroqProvider, ModelScopeProvider }
+export { CloudflareProvider, GroqProvider, ModelScopeProvider, NvidiaProvider }

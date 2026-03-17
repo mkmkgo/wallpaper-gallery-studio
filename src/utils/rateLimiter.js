@@ -137,13 +137,13 @@ export function createGroqRateLimiter() {
 }
 
 /**
- * 创建豆包专用的速率限制器
+ * 创建 NVIDIA NIM 专用的速率限制器
  */
-export function createDoubaoRateLimiter() {
+export function createNvidiaRateLimiter() {
   return new RateLimiter({
-    maxRequests: 5, // 最多 5 个并发请求
-    minInterval: 1000, // 每个请求间隔 1 秒
+    maxRequests: 3,
+    minInterval: 2000,
     retryAttempts: 3,
-    retryDelay: 2000
+    retryDelay: 3000
   })
 }

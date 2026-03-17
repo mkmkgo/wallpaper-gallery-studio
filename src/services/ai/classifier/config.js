@@ -102,6 +102,72 @@ export const CLASSIFIER_MODELS = {
     recommended: false
   },
 
+  // NVIDIA NIM 视觉模型
+  'nvidia-llama-3.2-90b': {
+    id: 'meta/llama-3.2-90b-vision-instruct',
+    name: 'Llama 3.2 90B Vision',
+    provider: AI_PROVIDERS.NVIDIA,
+    description: 'Meta Llama 3.2 最强视觉模型，识别精准',
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: true
+  },
+
+  'nvidia-llama-3.2-11b': {
+    id: 'meta/llama-3.2-11b-vision-instruct',
+    name: 'Llama 3.2 11B Vision',
+    provider: AI_PROVIDERS.NVIDIA,
+    description: 'Meta Llama 3.2 视觉模型，速度快',
+    speed: 'fast',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false
+  },
+
+  'nvidia-qwen2.5-vl-72b': {
+    id: 'qwen/qwen2.5-vl-72b-instruct',
+    name: 'Qwen2.5 VL 72B',
+    provider: AI_PROVIDERS.NVIDIA,
+    description: 'Qwen2.5 视觉语言模型，中文理解强',
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false
+  },
+
+  'nvidia-phi-3.5-vision': {
+    id: 'microsoft/phi-3.5-vision-instruct',
+    name: 'Phi-3.5 Vision',
+    provider: AI_PROVIDERS.NVIDIA,
+    description: 'Microsoft Phi-3.5 视觉模型，轻量高效',
+    speed: 'fast',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false
+  },
+
+  'nvidia-nemotron-nano-vl-8b': {
+    id: 'nvidia/llama-3.1-nemotron-nano-vl-8b-v1',
+    name: 'Nemotron Nano VL 8B',
+    provider: AI_PROVIDERS.NVIDIA,
+    description: 'NVIDIA Nemotron 视觉模型，速度极快',
+    speed: 'fast',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.2,
+    recommended: false
+  },
+
   // Cloudflare Workers AI
   'cloudflare-llama-3.2': {
     id: '@cf/meta/llama-3.2-11b-vision-instruct',
@@ -148,6 +214,18 @@ export const CLASSIFIER_CONFIG = {
     maxSize: 1024,
     quality: 0.9,
     format: 'image/jpeg'
+  }
+}
+
+/**
+ * AI 助手默认配置（与分类服务共享模型列表）
+ */
+export const ASSISTANT_CONFIG = {
+  defaultProvider: AI_PROVIDERS.MODELSCOPE,
+  defaultModel: 'modelscope-qwen3-vl-235b',
+  defaultSystemPrompt: 'default',
+  conversation: {
+    maxHistory: 20
   }
 }
 

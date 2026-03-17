@@ -17,36 +17,33 @@
 - **权限分级** - 管理员 / 可写 / 只读 / 无权限
 - **权限标签显示** - 导航栏实时显示当前权限
 
-### 🤖 AI 智能助手
+### 🤖 AI 智能分类
 
-- **多 AI Provider 支持** - 支持 Groq AI（默认）、豆包 AI 和 Cloudflare Workers AI
-- **Groq 超快推理** - 使用 Llama 4 Scout 视觉模型，速度极快
-- **AI 图片分析** - 智能图片分析和分类
-- **自动分类** - 自动识别图片类型并推荐分类（Desktop/Mobile/Avatar）
-- **智能命名** - AI 生成 2 个中文文件名建议
+- **多 AI Provider** - ModelScope（推荐）、Groq、NVIDIA NIM、Cloudflare Workers AI
+- **自动分类** - 上传图片后自动识别类型并推荐三级分类
+- **智能命名** - AI 生成 2 个中文文件名建议（8-15 汉字）
 - **关键词提取** - 自动提取图片关键词和描述
 - **诗意标题** - 生成 8-15 字的诗意中文标题
-- **分类匹配度** - 显示分类是否完美匹配
+- **分类匹配度** - 显示分类是否完美匹配现有体系
 - **新分类建议** - AI 可建议新的分类（如新 IP、明星等）
-- **分类逻辑说明** - 展示 AI 的分类决策逻辑
-- **批量处理** - 支持批量上传图片并自动分析
-- **多种模板** - 支持"分类+文件名"、"仅文件名"和自定义提示词
-- **实时进度** - 显示分析进度和当前处理状态
-- **结果预览** - 分析结果卡片展示，支持复制路径和全部信息
+- **分类逻辑说明** - 展示 AI 的分类决策链
+- **批量处理** - 支持批量上传并并发分析（最多 3 并发）
+- **多种提示词模板** - 分类+文件名、仅文件名、自定义
 
 ### 📁 分类管理
 
-- **三级分类** - Desktop / Mobile / Avatar
+- **三级分类体系** - Desktop / Mobile / Avatar 三个系列
 - **树形结构** - 支持一级和二级分类
 - **新建分类** - 可写权限用户可创建分类
 
 ### 🖼️ 图片上传
 
 - **拖拽上传** - 支持拖拽文件和文件夹
-- **批量上传** - 支持多文件同时上传
+- **批量上传** - 支持多文件同时上传，超 50 张显示预计时间
 - **多目录上传** - 单次上传支持不同文件指定不同目标目录
-- **系列标识** - 不同系列文件显示颜色边框和图标标识
-- **重复检测** - 基于内容 Hash 检测重复上传
+- **AI 模式 / 手动模式** - 可切换 AI 自动分类或手动选择分类
+- **重复检测** - 基于内容 Hash 检测重复上传（30 天 / 最多 500 条）
+- **大图压缩** - 超过 20MB 自动压缩，支持 8K 分辨率
 - **实时预览** - 上传前图片预览和信息展示
 - **进度显示** - 圆形进度条显示上传状态
 - **失败重试** - 上传失败文件支持一键重试
@@ -54,14 +51,12 @@
 ### ⚡ 工作流集成
 
 - **一键触发** - 触发图片处理工作流
-- **状态监控** - 实时显示工作流运行状态（运行中按钮变橙色）
-- **失败提示** - 工作流失败时显示详情链接
+- **状态监控** - 实时显示工作流运行状态
 - **版本回滚** - 管理员可回滚到上一版本
 
 ### 📊 统计与历史
 
 - **壁纸统计** - 显示各分类壁纸总数和增量
-- **系列图例** - 统计栏显示系列颜色标识
 - **发布历史** - 查看历史发布记录、趋势图和发布者
 - **上传历史** - 本地上传记录查看
 
@@ -74,276 +69,254 @@
 
 ## 🛠️ 技术栈
 
-| 类别 | 技术                                                |
-| ---- | --------------------------------------------------- |
-| 框架 | Vue 3 + Composition API                             |
-| 构建 | Vite 7                                              |
-| UI   | Element Plus                                        |
-| 状态 | Pinia                                               |
-| 动画 | GSAP                                                |
-| 样式 | SCSS + CSS Variables                                |
-| AI   | Groq AI + Cloudflare Workers AI + 豆包 AI (Doubao)  |
-| 规范 | ESLint + Prettier + Husky                           |
+| 类别 | 技术 |
+| ---- | ---- |
+| 框架 | Vue 3 + Composition API |
+| 构建 | Vite 7 |
+| UI | Element Plus |
+| 状态 | Pinia |
+| 动画 | GSAP |
+| 样式 | SCSS + CSS Variables |
+| AI | ModelScope / Groq / NVIDIA NIM / Cloudflare Workers AI |
+| 规范 | ESLint + Prettier + Husky |
 
 ## 🚀 快速开始
+
+> **Fork 本项目？** 请先阅读 [自托管部署指南](./docs/self-hosting.md)，了解如何配置自己的图床仓库、GitHub OAuth 和 AI API Key。
+
+### 前置要求
+
+- Node.js >= 18
+- pnpm >= 8
 
 ### 本地开发
 
 ```bash
-# 安装依赖
+# 1. 克隆仓库
+git clone https://github.com/your-org/wallpaper-gallery-studio.git
+cd wallpaper-gallery-studio
+
+# 2. 安装依赖
 pnpm install
 
-# 启动开发服务器
+# 3. 配置环境变量
+cp .env.example .env.local
+# 编辑 .env.local，填入你的 API Key
+
+# 4. 启动开发服务器
 pnpm dev
-
-# 构建生产版本
-pnpm build
-
-# 代码检查
-pnpm lint
-
-# 代码格式化
-pnpm format
 ```
 
-### 部署到 Cloudflare Pages
+### 常用命令
 
-详细部署步骤请查看 [Cloudflare 部署文档](./docs/cloudflare-deployment.md)
-
-**快速步骤：**
-
-1. 在 Cloudflare Pages 创建项目并连接 GitHub 仓库
-2. 配置环境变量（Settings → Environment variables）：
-   - `VITE_GROQ_API_KEY` - Groq AI API Key
-   - `VITE_GITHUB_CLIENT_ID` - GitHub OAuth Client ID
-   - `VITE_OAUTH_WORKER_URL` - OAuth Worker URL
-3. 推送代码，自动部署
+```bash
+pnpm dev      # 启动开发服务器（含 NVIDIA API 本地代理）
+pnpm build    # 构建生产版本
+pnpm lint     # 代码检查
+pnpm format   # 代码格式化
+```
 
 ## 📁 项目结构
 
 ```
-src/
-├── components/          # 公共组件
-│   ├── ai/              # AI 助手组件
-│   │   ├── AIAssistantPanel.vue
-│   │   ├── AIProviderSelector.vue  # AI Provider 选择器
-│   │   ├── CredentialsConfig.vue
-│   │   ├── PromptTemplateSelector.vue
-│   │   └── ResultCard.vue
-│   ├── upload/          # 上传相关组件
-│   │   ├── CategorySidebar.vue
-│   │   ├── UploadPanel.vue          # 主上传面板（已重构）
-│   │   ├── UploadPanel/             # 上传面板子组件
-│   │   │   ├── UploadHeader.vue     # 头部区域（模式切换、AI配置）
-│   │   │   ├── UploadDropzone.vue   # 拖拽上传区域
-│   │   │   ├── UploadFileGrid.vue   # 文件网格容器
-│   │   │   ├── UploadFileItem.vue   # 单个文件卡片
-│   │   │   ├── upload-tooltip.scss  # AI tooltip 样式
-│   │   │   └── README.md            # 组件结构说明
-│   │   ├── ImagePreview.vue
-│   │   ├── WorkflowPanel.vue
-│   │   ├── WallpaperStatsBar.vue
-│   │   ├── UploadProgressModal.vue  # 上传进度弹窗
-│   │   └── ReleaseHistoryModal.vue
-│   ├── GlassCard.vue    # 毛玻璃卡片
-│   └── MainLayout.vue   # 主布局
-├── composables/         # 组合式函数
-│   ├── useAnimation.js
-│   └── useErrorHandler.js
-├── config/              # 配置文件
-│   ├── categories.js    # 分类配置
-│   └── subcategories.js # 子分类配置
-├── router/              # 路由配置
-├── services/            # API 服务
-│   ├── ai/              # AI 服务模块（已重构）
-│   │   ├── core/        # 核心功能
-│   │   │   ├── providers/           # AI Provider 实现
-│   │   │   │   ├── base-provider.js      # Provider 基类
-│   │   │   │   ├── cloudflare-provider.js # Cloudflare AI
-│   │   │   │   ├── doubao-provider.js    # 豆包 AI
-│   │   │   │   └── index.js              # Provider 工厂
-│   │   │   ├── image-processor.js   # 图片压缩处理
-│   │   │   └── index.js             # 核心功能导出
-│   │   ├── classifier/  # 分类服务
-│   │   │   ├── service.js           # 分类分析服务
-│   │   │   ├── prompts.js           # 提示词模板
-│   │   │   ├── config.js            # 模型配置
-│   │   │   └── index.js
-│   │   ├── assistant/   # AI 助手服务
-│   │   │   ├── service.js
-│   │   │   ├── prompts.js
-│   │   │   ├── config.js
-│   │   │   └── index.js
-│   │   └── index.js     # AI 服务统一导出
-│   ├── github.js        # GitHub API 封装
-│   ├── gistStorage.js   # Gist 存储服务
-│   └── localStorage.js  # 本地存储服务
-├── stores/              # Pinia 状态管理
-│   ├── ai.js            # AI 分析状态
-│   ├── ai-classifier.js # AI 分类器状态
-│   ├── ai-assistant.js  # AI 助手状态
-│   ├── auth.js          # 认证状态
-│   ├── config.js        # 配置状态
-│   ├── credentials.js   # 凭证管理
-│   ├── upload.js        # 上传状态
-│   ├── workflow.js      # 工作流状态
-│   └── history.js       # 历史记录
-├── styles/              # 全局样式
-│   ├── index.scss       # 全局样式入口
-│   └── variables.scss   # SCSS 变量
-├── utils/               # 工具函数
-│   ├── errorHandler.js  # 错误处理
-│   └── ...
-└── views/               # 页面视图
-    ├── LoginView.vue
-    ├── CallbackView.vue
-    ├── UploadView.vue
-    ├── AIAssistantView.vue
-    ├── AITestSimple.vue
-    ├── HistoryView.vue
-    └── SettingsView.vue
+wallpaper-gallery-studio/
+├── public/                  # 静态资源
+│   └── hash-worker.js       # Web Worker（文件 Hash 计算）
+├── worker/
+│   └── ai-proxy.js          # Cloudflare Worker（Cloudflare AI 代理）
+├── src/
+│   ├── components/
+│   │   ├── ai/              # AI 相关组件
+│   │   │   ├── AIAssistantPanel.vue      # AI 工坊主面板
+│   │   │   ├── AIProviderSelector.vue    # Provider 选择器
+│   │   │   ├── CredentialsConfig.vue     # 凭证配置
+│   │   │   ├── PromptTemplateSelector.vue
+│   │   │   └── ResultCard.vue            # 分析结果卡片
+│   │   ├── upload/          # 上传相关组件
+│   │   │   ├── UploadPanel.vue           # 主上传面板
+│   │   │   ├── UploadPanel/              # 上传面板子组件
+│   │   │   │   ├── UploadHeader.vue      # 头部（模式切换、AI 配置）
+│   │   │   │   ├── UploadDropzone.vue    # 拖拽上传区域
+│   │   │   │   ├── UploadFileGrid.vue    # 文件网格容器
+│   │   │   │   └── UploadFileItem.vue    # 单个文件卡片
+│   │   │   ├── CategorySidebar.vue       # 分类侧边栏
+│   │   │   ├── WorkflowPanel.vue         # 工作流面板
+│   │   │   ├── WallpaperStatsBar.vue     # 壁纸统计栏
+│   │   │   ├── UploadProgressModal.vue   # 上传进度弹窗
+│   │   │   └── ReleaseHistoryModal.vue   # 发布历史弹窗
+│   │   ├── common/
+│   │   │   ├── AnimatedNumber.vue        # 数字动画组件
+│   │   │   └── CustomSelect.vue          # 自定义下拉框
+│   │   ├── GlassCard.vue
+│   │   ├── GradientBackground.vue
+│   │   ├── MainLayout.vue
+│   │   ├── Toast.vue
+│   │   └── ConfirmDialog.vue
+│   ├── composables/
+│   │   └── useAnimation.js
+│   ├── config/
+│   │   ├── categories.js    # 一级 / 二级分类配置
+│   │   ├── subcategories.js # 三级分类配置
+│   │   └── oauth.js         # OAuth 配置
+│   ├── router/              # 路由配置
+│   ├── services/
+│   │   ├── ai/
+│   │   │   ├── core/        # AI 核心层（共享）
+│   │   │   │   ├── providers/
+│   │   │   │   │   ├── base-provider.js        # Provider 基类
+│   │   │   │   │   ├── cloudflare-provider.js  # Cloudflare Workers AI
+│   │   │   │   │   ├── groq-provider.js        # Groq AI
+│   │   │   │   │   ├── nvidia-provider.js      # NVIDIA NIM
+│   │   │   │   │   ├── modelscope-provider.js  # ModelScope
+│   │   │   │   │   └── index.js                # Provider 工厂
+│   │   │   │   ├── image-processor.js          # 图片压缩处理
+│   │   │   │   └── index.js
+│   │   │   ├── classifier/  # 分类服务（上传页面使用）
+│   │   │   │   ├── service.js   # analyzeImage / analyzeBatch
+│   │   │   │   ├── prompts.js   # 分类决策树提示词（desktop/mobile/avatar）
+│   │   │   │   ├── config.js    # 模型列表 + CLASSIFIER_CONFIG + ASSISTANT_CONFIG
+│   │   │   │   └── index.js
+│   │   │   ├── assistant/   # AI 助手服务（AI 工坊页面使用）
+│   │   │   │   ├── service.js   # sendMessage / analyzeImage
+│   │   │   │   ├── prompts.js   # 对话式系统提示词
+│   │   │   │   ├── config.js    # 从 classifier/config 重新导出
+│   │   │   │   └── index.js
+│   │   │   └── index.js     # 统一导出
+│   │   ├── github.js        # GitHub API 封装
+│   │   └── localStorage.js  # 本地存储服务
+│   ├── stores/
+│   │   ├── ai.js            # AI 分析状态（统一 store）
+│   │   ├── auth.js          # 认证状态
+│   │   ├── config.js        # 仓库配置状态
+│   │   ├── credentials.js   # 多 Provider 凭证管理
+│   │   ├── upload.js        # 上传状态 + AI 自动分析
+│   │   ├── workflow.js      # 工作流状态
+│   │   └── history.js       # 上传历史记录
+│   ├── styles/
+│   │   ├── index.scss
+│   │   ├── variables.scss
+│   │   └── element-dark.scss
+│   ├── utils/
+│   │   ├── debounce.js
+│   │   ├── errorHandler.js
+│   │   ├── hashWorker.js    # Web Worker 封装（文件 Hash）
+│   │   ├── image-detector.js # 图片类型自动检测
+│   │   ├── imageCompressor.js
+│   │   ├── previewManager.js # 预览 URL 生命周期管理
+│   │   └── rateLimiter.js   # API 速率限制器
+│   ├── views/
+│   │   ├── LoginView.vue
+│   │   ├── CallbackView.vue
+│   │   ├── UploadView.vue
+│   │   ├── AIAssistantView.vue
+│   │   ├── HistoryView.vue
+│   │   └── SettingsView.vue
+│   ├── App.vue
+│   └── main.js
+├── .env.example             # 环境变量示例
+├── vite.config.js
+└── package.json
 ```
 
-## 🔧 配置说明
+## 🔧 环境变量配置
 
-### 环境变量
+复制 `.env.example` 为 `.env.local` 并填入你的值：
 
 ```env
-VITE_GITHUB_CLIENT_ID=your_client_id
-VITE_OAUTH_WORKER_URL=https://your-worker.workers.dev
+# Cloudflare Workers AI（可选）
+VITE_CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+VITE_CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+VITE_WORKER_URL=https://your-worker.your-subdomain.workers.dev
 
-# AI Provider API Keys（可选）
-VITE_GROQ_API_KEY=your_groq_api_key          # Groq AI（推荐）
-VITE_DOUBAO_API_KEY=your_doubao_api_key      # 豆包 AI
-VITE_CLOUDFLARE_ACCOUNT_ID=your_account_id   # Cloudflare AI
-VITE_CLOUDFLARE_API_TOKEN=your_api_token     # Cloudflare AI
+# ModelScope 魔搭社区（推荐，免费）
+# 获取地址：https://modelscope.cn → 个人中心 → API Token
+VITE_MODELSCOPE_API_KEY=your_modelscope_api_key
+
+# Groq AI（推荐，速度极快）
+# 获取地址：https://console.groq.com/keys
+VITE_GROQ_API_KEY=your_groq_api_key
+
+# NVIDIA NIM（可选，视觉模型丰富）
+# 获取地址：https://build.nvidia.com → Get API Key
+VITE_NVIDIA_API_KEY=your_nvidia_api_key
 ```
 
-### AI 配置
+## 🤖 AI Provider 说明
 
-支持三种 AI Provider：
+模型列表统一在 `src/services/ai/classifier/config.js` 中维护，classifier 和 assistant 两个服务共享同一份配置。
 
-#### Groq AI（推荐，默认）
+### ModelScope 魔搭（推荐）
 
-- **API Key** - 从 [Groq Console](https://console.groq.com/keys) 获取
-- **模型** - Llama 4 Scout Vision（速度极快，准确度高）
-- **配置方式** - 环境变量 `VITE_GROQ_API_KEY` 或页面手动配置
+- 免费额度充足，国内访问稳定
+- 推荐模型：**Qwen3 VL 235B**（精度最高）、**Qwen3 VL 8B**（速度快）
+- 获取 Key：[modelscope.cn](https://modelscope.cn) → 个人中心 → API Token
 
-#### 豆包 AI
+### Groq AI
 
-- **API Key** - 从环境变量 `VITE_DOUBAO_API_KEY` 读取，或在页面手动配置
-- **模型选择** - 支持 Doubao Seed 1.8 版本
+- 推理速度极快，免费额度充足
+- 推荐模型：**Llama 4 Scout Vision**、**Llama 4 Maverick Vision**
+- 获取 Key：[console.groq.com/keys](https://console.groq.com/keys)
+- 本地和线上均直连（Groq 官方支持 CORS）
 
-#### Cloudflare Workers AI
+### NVIDIA NIM
 
-在 AI 助手页面配置：
+- 视觉模型选择最丰富
+- 推荐模型：**Llama 3.2 90B Vision**（精度最高）
+- 获取 Key：[build.nvidia.com](https://build.nvidia.com) → Get API Key
+- 本地开发走 Vite dev proxy（`/nvidia-api`），线上直连
 
-- **Account ID** - Cloudflare Account ID
-- **API Token** - Cloudflare API Token
-- **Worker URL** - AI Proxy Worker URL
+### Cloudflare Workers AI
 
-### 默认配置
+- 需要部署 `worker/ai-proxy.js` 到 Cloudflare Workers
+- 支持模型：Llama 3.2 11B Vision、LLaVA 1.5 7B
 
-| 配置项      | 默认值                                     |
-| ----------- | ------------------------------------------ |
-| 图床仓库    | `IT-NuanxinPro/nuanXinProPic`              |
-| 工作流仓库  | `IT-NuanxinPro/wallpaper-gallery-workflow` |
-| 分支        | `main`                                     |
-| AI Provider | `Groq AI`                                  |
-| AI 模型     | `groq-llama-4-scout` (Llama 4 Scout Vision)|
+### 分类决策树
 
-## 🤖 AI 功能说明
+针对三个系列各有专用提示词（`classifier/prompts.js`）：
 
-### 支持的 AI Provider
+| 系列 | 决策树重点 |
+| ---- | ---------- |
+| Desktop | 人像（魅力/国风/氛围感/清新）、动漫、插画、风景 |
+| Mobile | 人像（魅力/日系/清新/氛围感）、动漫、插画 |
+| Avatar | IP 形象、动漫角色、人像、萌宠、表情包、插画 |
 
-#### Groq AI（推荐，默认）
+## 🚀 部署到 Cloudflare Pages
 
-- **Llama 4 Scout Vision** - 速度极快、准确度高、成本低
-- **优势** - 超快推理速度，显著提升用户体验
+1. 在 Cloudflare Pages 创建项目，连接 GitHub 仓库
+2. 构建配置：
+   - 构建命令：`pnpm build`
+   - 输出目录：`dist`
+3. 在 Settings → Environment variables 添加环境变量（参考上方配置）
+4. 推送代码，自动触发部署
 
-#### 豆包 AI
+### Cloudflare Worker 部署（仅 Cloudflare AI 需要）
 
-- **Doubao Seed 1.8** - 最新版本，性能强
+```bash
+npm install -g wrangler
+wrangler login
+wrangler deploy worker/ai-proxy.js --name ai-proxy --compatibility-date 2026-03-17
+```
 
-#### Cloudflare Workers AI
-
-- **Llama 3.2 11B Vision** - 速度中等、准确度高
-
-### 提示词模板
-
-- **分类 + 文件名** - 同时生成分类和文件名建议（默认）
-- **仅文件名** - 只生成文件名，不进行分类
-- **自定义** - 使用自定义提示词
-
-### 分类规则
-
-根据选择的壁纸类型（Desktop/Mobile/Avatar），AI 会自动使用对应的专用提示词：
-
-- **Desktop** - 适用于桌面壁纸，包含人像、动漫、插画、风景等决策树
-- **Mobile** - 适用于手机壁纸，包含人像、动漫、插画等决策树
-- **Avatar** - 适用于头像图片，包含 IP 形象、人像、萌宠、表情包等决策树
-
-### 文件名生成
-
-- AI 生成 **2 个不同风格的中文文件名**
-- 每个文件名 8-15 个汉字
-- 结构：修饰形容词 + 主体 + 场景或动作 + .jpg
-- 示例：`阳光下奔跑的治愈系柴犬.jpg`、`身穿黑色长裙的卷发港风少女.jpg`
-- 支持一键复制和选择
-
-### AI 输出字段
-
-- **分类信息** - secondary（二级分类）、third（三级分类）
-- **文件名** - 2 个中文文件名建议
-- **诗意标题** - 8-15 字的高雅标题
-- **关键词** - 3-5 个精准中文词
-- **描述** - 20-40 字优美描述
-- **匹配度** - 是否完美匹配现有分类
-- **新分类建议** - 如果是新 IP/明星，AI 会建议新分类
-- **分类逻辑** - 说明 AI 的决策过程
+部署后将 Worker URL 填入 `VITE_WORKER_URL` 环境变量。
 
 ## 🔒 权限说明
 
-| 权限级别 | 说明                | 功能                 |
-| -------- | ------------------- | -------------------- |
-| 管理员   | 仓库 Owner          | 全部功能 + 回滚      |
-| 可写     | Collaborator (push) | 上传 + 新建分类 + AI |
-| 只读     | Collaborator (pull) | 仅浏览               |
-| 无权限   | 无仓库访问权限      | 无法使用             |
+| 权限级别 | 说明 | 可用功能 |
+| -------- | ---- | -------- |
+| 管理员 | 仓库 Owner | 全部功能 + 版本回滚 |
+| 可写 | Collaborator (push) | 上传 + 新建分类 + AI 分析 |
+| 只读 | Collaborator (pull) | 仅浏览 |
+| 无权限 | 无仓库访问权限 | 无法使用 |
 
 ## 📝 本地存储
 
-| Key                  | 用途                 | 过期策略            |
-| -------------------- | -------------------- | ------------------- |
-| `auth_token`         | GitHub Token         | 手动登出清除        |
-| `uploaded_hashes`    | 上传文件 Hash        | 30 天 / 最多 500 条 |
-| `upload_history`     | 上传历史记录         | 手动清除            |
-| `ai_credentials_enc` | AI 凭证（加密）      | 手动清除            |
-| `doubao_api_key_enc` | 豆包 API Key（加密） | 手动清除            |
-
-## 📝 更新日志
-
-### v1.3.0 (2026-01-25)
-
-#### 新增功能
-- ✨ 添加文件夹上传批量警告功能（超过 50 张图片时显示预计上传时间）
-- ✨ 文件夹选择时显示文件数量反馈
-- ✨ 拖拽文件夹时显示"正在读取文件夹..."加载提示
-- ✨ 添加 Groq AI 速率限制器，避免 API 超限（429 错误）
-- ✨ 添加豆包 AI 速率限制器
-- ✨ 自动重试机制：失败时自动重试 3 次，指数退避
-
-#### 优化改进
-- 🐛 修复 AI 分类 third 字段偶尔返回完整路径的问题（如 "插画/场景" → "场景"）
-- 🐛 修复所有 AI provider（Groq、Doubao、Cloudflare）的分类路径清理逻辑
-- 🔧 修复 `substr()` 已弃用警告，改用 `substring()`
-- 📝 添加详细的调试日志，方便排查 AI 分类问题
-- 🎨 优化批量上传体验，提供更友好的提示信息
-
-#### 技术改进
-- 🛠️ 新增 `rateLimiter.js` 工具类，统一管理 API 速率限制
-- 🛠️ 优化 AI 分类服务的并发控制和错误处理
-- 🛠️ 改进代码质量，移除已弃用的 API 调用
+| Key | 用途 | 过期策略 |
+| --- | ---- | -------- |
+| `auth_token` | GitHub Token | 手动登出清除 |
+| `uploaded_hashes` | 上传文件 Hash（去重） | 30 天 / 最多 500 条 |
+| `upload_history` | 上传历史记录 | 手动清除 |
+| `ai_credentials` | AI 凭证（AES-GCM 加密） | 手动清除 |
+| `ai_current_provider` | 上次选择的 Provider | 持久 |
 
 ## 📄 License
 
