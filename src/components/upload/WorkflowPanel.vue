@@ -126,6 +126,14 @@
           {{ pendingInfo.message }}
         </div>
 
+        <div v-if="showDeployHint" class="workflow-panel__deploy-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span
+            >数据已生成。若要让
+            <code>wallpaper-gallery</code> 线上立即生效，请手动点击下方“重新部署前端”。</span
+          >
+        </div>
+
         <!-- 错误信息 -->
         <div v-if="pendingInfo.error" class="workflow-panel__error">
           <el-icon><WarningFilled /></el-icon>
@@ -263,6 +271,13 @@ const workflowStatus = computed(() => workflowStore.workflowStatus)
 const isAdmin = computed(() => authStore.permissionLevel === 'admin')
 const canUpload = computed(() => authStore.canUpload)
 const isRunning = computed(() => workflowStore.isRunning)
+const showDeployHint = computed(
+  () =>
+    canUpload.value &&
+    !isRunning.value &&
+    pendingInfo.value.pendingCount === 0 &&
+    workflowStatus.value.latestRun?.conclusion === 'success'
+)
 
 // 进度步骤
 const progressSteps = computed(() => {
@@ -801,6 +816,32 @@ onUnmounted(() => {
     .el-icon {
       flex-shrink: 0;
       margin-top: 2px;
+    }
+  }
+
+  &__deploy-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-2;
+    padding: $spacing-3;
+    border-radius: $radius-lg;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    color: rgba(219, 234, 254, 0.96);
+    font-size: $font-size-xs;
+    line-height: 1.65;
+
+    :deep(code) {
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.28);
+      color: inherit;
+      font-size: inherit;
+    }
+
+    .el-icon {
+      margin-top: 2px;
+      flex-shrink: 0;
     }
   }
 
