@@ -135,15 +135,3 @@ export function createGroqRateLimiter() {
     retryDelay: 3000 // 重试延迟 3 秒
   })
 }
-
-/**
- * 创建 NVIDIA NIM 专用的速率限制器
- */
-export function createNvidiaRateLimiter() {
-  return new RateLimiter({
-    maxRequests: 3,
-    minInterval: 2000,
-    retryAttempts: 3,
-    retryDelay: 3000
-  })
-}

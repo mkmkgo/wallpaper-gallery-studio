@@ -54,6 +54,8 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   uploading: { type: Boolean, default: false },
   canAddFiles: { type: Boolean, default: true },
+  uploadMode: { type: String, default: 'ai' },
+  aiConfig: { type: Object, default: null },
   icon: { type: String, default: '📁' },
   text: { type: String, default: '拖拽图片或文件夹到此处' },
   canUpload: { type: Boolean, default: true } // 新增：是否有上传权限
@@ -64,6 +66,30 @@ const emit = defineEmits(['add-files'])
 const fileInputRef = ref(null)
 const folderInputRef = ref(null)
 const isDragging = ref(false)
+
+function getBatchLimit() {
+  if (props.uploadMode !== 'ai') return Infinity
+  return props.aiConfig?.provider === 'groq' ? 10 : 1
+}
+
+function getLimitMessage(limit) {
+  if (limit === 10) {
+    return '当前 Groq 模型单次最多上传 10 张图片，请分批上传'
+  }
+
+  return '当前所选模型单次仅支持上传 1 张图片'
+}
+
+function validateBatchLimit(files) {
+  const limit = getBatchLimit()
+
+  if (files.length > limit) {
+    ElMessage.warning(getLimitMessage(limit))
+    return false
+  }
+
+  return true
+}
 
 // 触发文件选择
 function triggerInput() {
@@ -163,8 +189,12 @@ async function handleDrop(e) {
         return
       }
 
+      if (!validateBatchLimit(imageFiles)) {
+        return
+      }
+
       // 大批量文件警告
-      if (imageFiles.length > 50) {
+      if (props.uploadMode !== 'ai' && imageFiles.length > 50) {
         ElMessage({
           message: `📂 检测到 ${imageFiles.length} 张图片，建议分批上传以获得更好的体验`,
           type: 'warning',
@@ -187,7 +217,7 @@ async function handleDrop(e) {
   } else {
     // 降级：直接使用 files
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-    if (files.length > 0) {
+    if (files.length > 0 && validateBatchLimit(files)) {
       emit('add-files', files)
     }
   }
@@ -195,7 +225,10 @@ async function handleDrop(e) {
 
 // 处理文件选择
 function handleFileSelect(e) {
-  emit('add-files', Array.from(e.target.files))
+  const files = Array.from(e.target.files)
+  if (files.length > 0 && validateBatchLimit(files)) {
+    emit('add-files', files)
+  }
   e.target.value = ''
 }
 
@@ -210,8 +243,13 @@ function handleFolderSelect(e) {
     return
   }
 
+  if (!validateBatchLimit(files)) {
+    e.target.value = ''
+    return
+  }
+
   // 大批量文件警告
-  if (files.length > 50) {
+  if (props.uploadMode !== 'ai' && files.length > 50) {
     ElMessage({
       message: `📂 检测到 ${files.length} 张图片，建议分批上传以获得更好的体验`,
       type: 'warning',

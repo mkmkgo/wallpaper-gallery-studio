@@ -8,17 +8,18 @@
       :ai-config="aiConfig"
       :ai-analyzing="aiAnalyzing"
       :ai-analyzing-count="aiAnalyzingCount"
-      :available-providers="availableProviders"
       :files-count="files.length"
       :error-count="errorCount"
       :uploading="uploading"
       :progress="progress"
       :can-upload="authStore.canUpload"
       :can-start-upload="canStartUpload"
+      :metadata-status="metadataStatus"
+      :metadata-error="metadataError"
       @mode-change="handleModeChange"
       @series-change="$emit('series-change', $event)"
-      @provider-change="$emit('provider-change', $event)"
       @model-change="$emit('model-change', $event)"
+      @retry-metadata="$emit('retry-metadata')"
       @retry="$emit('retry')"
       @clear="handleClear"
       @upload="$emit('upload')"
@@ -33,6 +34,8 @@
         :uploading="uploading"
         :can-add-files="canAddFiles"
         :can-upload="props.canUpload"
+        :upload-mode="uploadMode"
+        :ai-config="aiConfig"
         :icon="dropzoneIcon"
         :text="dropzoneText"
         @add-files="handleAddFiles"
@@ -79,7 +82,8 @@ const props = defineProps({
   aiConfig: { type: Object, default: null },
   aiAnalyzing: { type: Boolean, default: false },
   aiAnalyzingCount: { type: Number, default: 0 },
-  availableProviders: { type: Array, default: () => [] },
+  metadataStatus: { type: String, default: 'idle' },
+  metadataError: { type: String, default: '' },
   canUpload: { type: Boolean, default: true } // 新增：是否有上传权限
 })
 
@@ -94,9 +98,9 @@ const emit = defineEmits([
   'change-target',
   'mode-change',
   'series-change',
-  'apply-all-ai',
-  'provider-change',
   'model-change',
+  'retry-metadata',
+  'apply-all-ai',
   'edit-ai'
 ])
 
@@ -126,7 +130,9 @@ const dropzoneIcon = computed(() => {
 // 拖拽区域文本
 const dropzoneText = computed(() => {
   if (props.uploadMode === 'ai') {
-    return '拖拽图片到此处，AI 将自动分类'
+    return props.aiConfig?.provider === 'groq'
+      ? '拖拽图片到此处，AI 将自动分类（当前最多 10 张）'
+      : '拖拽图片到此处，AI 将自动分类（当前仅支持 1 张）'
   }
   return props.targetPath ? '拖拽图片或文件夹到此处' : '请先选择分类'
 })

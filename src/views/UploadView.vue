@@ -74,7 +74,8 @@
             :ai-config="aiConfig"
             :ai-analyzing="uploadStore.aiAnalyzing"
             :ai-analyzing-count="uploadStore.aiAnalyzingCount"
-            :available-providers="availableProviders"
+            :metadata-status="uploadStore.metadataStatus"
+            :metadata-error="uploadStore.metadataError"
             :can-upload="authStore.canUpload"
             @add-files="addFiles"
             @remove="uploadStore.removeFile"
@@ -86,9 +87,9 @@
             @change-target="handleChangeTarget"
             @mode-change="handleModeChange"
             @series-change="handleSeriesChange"
-            @apply-all-ai="handleApplyAllAi"
-            @provider-change="handleProviderChange"
             @model-change="handleModelChange"
+            @retry-metadata="handleRetryMetadata"
+            @apply-all-ai="handleApplyAllAi"
             @edit-ai="handleEditAI"
           />
         </div>
@@ -113,7 +114,10 @@
         :files="uploadStore.files"
         :uploading="uploading"
         :current-index="uploadStore.currentFileIndex"
+        :metadata-status="uploadStore.metadataStatus"
+        :metadata-error="uploadStore.metadataError"
         @retry="handleRetry"
+        @retry-metadata="handleRetryMetadata"
         @close="showProgressModal = false"
       />
 
@@ -178,7 +182,6 @@ import { useConfigStore } from '@/stores/config'
 import { useUploadStore } from '@/stores/upload'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkflowStore } from '@/stores/workflow'
-import { useCredentialsStore } from '@/stores/credentials'
 import { debounce } from '@/utils/debounce'
 import { detectBatchImageTypes, getDetectionStats } from '@/utils/image-detector'
 
@@ -186,7 +189,6 @@ const configStore = useConfigStore()
 const uploadStore = useUploadStore()
 const authStore = useAuthStore()
 const workflowStore = useWorkflowStore()
-const credentialsStore = useCredentialsStore()
 
 const viewRef = ref(null)
 const pageLoading = ref(false) // 页面加载状态，默认不显示 loading
@@ -217,14 +219,6 @@ const rateLimit = computed(() => uploadStore.getRateLimit())
 
 // AI 配置
 const aiConfig = computed(() => uploadStore.getCurrentAiConfig())
-
-// 上传页面显示所有可用的 AI Providers（Cloudflare 暂不可用）
-const availableProviders = computed(() => {
-  return credentialsStore.availableProviders.map(p => ({
-    ...p,
-    disabled: p.key === 'cloudflare'
-  }))
-})
 
 const categoryCache = new Map()
 const CACHE_TTL = 5 * 60 * 1000
@@ -393,7 +387,7 @@ async function addFiles(files) {
     }
   }
 
-  const added = uploadStore.addFiles(imgs)
+  const added = await uploadStore.addFiles(imgs)
   if (added.length < imgs.length)
     ElMessage.warning(`${imgs.length - added.length} 个文件不符合要求`)
 }
@@ -413,6 +407,7 @@ async function handleUpload() {
     const results = await uploadStore.uploadAll()
     const ok = results.results.filter(r => r.success).length
     const fail = results.results.length - ok
+    const reused = results.results.filter(r => r.reusedExisting).length
 
     // 更新会话上传计数
     if (ok > 0) {
@@ -436,12 +431,19 @@ async function handleUpload() {
     }
 
     ElMessage[fail ? 'warning' : 'success'](
-      fail ? `上传完成：${ok} 成功，${fail} 失败` : `成功上传 ${ok} 个文件`
+      fail
+        ? `上传完成：${ok} 成功，${fail} 失败${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
+        : `成功处理 ${ok} 个文件${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
     )
+
+    if (results.metadataResult?.success === false) {
+      ElMessage.warning(`图片已上传，但元数据生成失败：${results.metadataResult.error}`)
+    }
+
     refreshStats()
 
     // 清理成功上传的文件（释放内存）
-    if (ok > 0) {
+    if (ok > 0 && results.metadataResult?.success !== false) {
       uploadStore.clearSuccessFiles()
     }
 
@@ -460,6 +462,25 @@ async function handleUpload() {
     }
   } catch (e) {
     ElMessage.error(e.message || '上传失败')
+  }
+}
+
+async function handleRetryMetadata() {
+  try {
+    const result = await uploadStore.retryPendingMetadata()
+    if (!result) return
+
+    if (result.success) {
+      ElMessage.success('元数据已重新生成并提交')
+      uploadStore.clearSuccessFiles()
+
+      const { owner, repo, branch } = configStore.config
+      await workflowStore.refreshPendingInfo(owner, repo, branch)
+    } else {
+      ElMessage.error(result.error || '元数据重试失败')
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '元数据重试失败')
   }
 }
 
@@ -506,18 +527,6 @@ function handleApplyAllAi() {
   }
 }
 
-// AI Provider 切换
-function handleProviderChange(provider) {
-  uploadStore.setAiProvider(provider)
-  const providerNames = {
-    groq: 'Groq AI',
-    modelscope: 'ModelScope AI',
-    cloudflare: 'Cloudflare AI'
-  }
-  ElMessage.success(`已切换到 ${providerNames[provider] || provider}`)
-}
-
-// AI 模型切换
 function handleModelChange(modelKey) {
   uploadStore.setAiModel(modelKey)
   const config = uploadStore.getCurrentAiConfig()

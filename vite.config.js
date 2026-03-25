@@ -28,15 +28,6 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
-  server: {
-    proxy: {
-      '/nvidia-api': {
-        target: 'https://integrate.api.nvidia.com',
-        changeOrigin: true,
-        rewrite: path => path.replace(/^\/nvidia-api/, '')
-      }
-    }
-  },
   build: {
     rollupOptions: {
       output: {

@@ -42,11 +42,11 @@
           </div>
         </div>
 
-        <!-- AI Provider/Model 显示 -->
+        <!-- AI 模型选择 -->
         <div class="upload-header__ai-info">
           <el-popover
             placement="bottom"
-            :width="280"
+            :width="320"
             trigger="click"
             popper-class="upload-header__ai-popover"
           >
@@ -54,7 +54,7 @@
               <button class="upload-header__ai-btn" :disabled="aiAnalyzing">
                 <span class="upload-header__ai-btn-icon">{{ aiConfig?.providerIcon || '🤖' }}</span>
                 <span class="upload-header__ai-btn-text">{{
-                  aiConfig?.modelName || 'AI 模型'
+                  aiConfig?.modelName || 'AI 自动分类'
                 }}</span>
                 <span v-if="aiAnalyzing" class="upload-header__ai-btn-badge">
                   {{ aiAnalyzingCount }}
@@ -63,43 +63,23 @@
               </button>
             </template>
 
-            <!-- AI 配置弹出层 -->
             <div class="upload-header__ai-dropdown">
               <div class="upload-header__ai-dropdown-section">
-                <div class="upload-header__ai-dropdown-label">AI 服务商</div>
+                <div class="upload-header__ai-dropdown-label">AI 模型</div>
                 <div class="upload-header__ai-dropdown-options">
                   <button
-                    v-for="p in availableProviders"
-                    :key="p.key"
+                    v-for="model in aiConfig?.availableModels || []"
+                    :key="model.key"
                     class="upload-header__ai-dropdown-option"
                     :class="{
-                      'upload-header__ai-dropdown-option--active': aiConfig?.provider === p.key,
-                      'upload-header__ai-dropdown-option--disabled': p.disabled
+                      'upload-header__ai-dropdown-option--active': aiConfig?.modelKey === model.key
                     }"
-                    :disabled="p.disabled"
-                    @click="!p.disabled && $emit('provider-change', p.key)"
+                    @click="$emit('model-change', model.key)"
                   >
-                    <span>{{ p.icon }}</span>
-                    <span>{{ p.name }}</span>
-                    <span class="upload-header__ai-dropdown-source">{{ p.source }}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div class="upload-header__ai-dropdown-section">
-                <div class="upload-header__ai-dropdown-label">模型</div>
-                <div class="upload-header__ai-dropdown-options">
-                  <button
-                    v-for="m in aiConfig?.availableModels || []"
-                    :key="m.key"
-                    class="upload-header__ai-dropdown-option"
-                    :class="{
-                      'upload-header__ai-dropdown-option--active': aiConfig?.modelKey === m.key
-                    }"
-                    @click="$emit('model-change', m.key)"
-                  >
-                    <span>{{ m.name }}</span>
-                    <span v-if="m.recommended" class="upload-header__ai-dropdown-badge">推荐</span>
+                    <span>{{ model.name }}</span>
+                    <span class="upload-header__ai-dropdown-source">
+                      {{ model.provider === 'groq' ? 'Groq' : '魔塔社区' }}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -140,6 +120,13 @@
         </div>
       </Transition>
       <button
+        v-if="metadataStatus === 'error'"
+        class="upload-header__btn-metadata"
+        @click="$emit('retry-metadata')"
+      >
+        重试元数据
+      </button>
+      <button
         v-if="canUpload"
         class="upload-header__btn-upload"
         :disabled="!canStartUpload"
@@ -165,20 +152,21 @@ const props = defineProps({
   aiConfig: { type: Object, default: null },
   aiAnalyzing: { type: Boolean, default: false },
   aiAnalyzingCount: { type: Number, default: 0 },
-  availableProviders: { type: Array, default: () => [] },
   filesCount: { type: Number, default: 0 },
   errorCount: { type: Number, default: 0 },
   uploading: { type: Boolean, default: false },
   progress: { type: Number, default: 0 },
   canUpload: { type: Boolean, default: true },
-  canStartUpload: { type: Boolean, default: false }
+  canStartUpload: { type: Boolean, default: false },
+  metadataStatus: { type: String, default: 'idle' },
+  metadataError: { type: String, default: '' }
 })
 
 const emit = defineEmits([
   'mode-change',
   'series-change',
-  'provider-change',
   'model-change',
+  'retry-metadata',
   'retry',
   'clear',
   'upload'
@@ -548,6 +536,26 @@ async function handleModeChange(mode) {
     &:hover {
       background: rgba($danger, 0.1);
       color: $danger;
+    }
+  }
+
+  &__btn-metadata {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-2 $spacing-3;
+    background: rgba($warning, 0.12);
+    border: 1px solid rgba($warning, 0.35);
+    border-radius: $radius-md;
+    color: $warning;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $duration-normal;
+
+    &:hover {
+      background: rgba($warning, 0.2);
+      color: $white;
     }
   }
 

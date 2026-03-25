@@ -4,13 +4,15 @@ import { githubService } from '@/services/github'
 import { useConfigStore } from './config'
 import { useHistoryStore } from './history'
 import { useCredentialsStore } from './credentials'
+import { AI_PROVIDERS } from '@/services/ai/core'
 import { previewManager } from '@/utils/previewManager'
 import { hashWorker } from '@/utils/hashWorker'
 import { imageCompressor } from '@/utils/imageCompressor'
 import {
   analyzeImage as classifierAnalyze,
   CLASSIFIER_CONFIG,
-  getModelList
+  getModelList,
+  getRecommendedModel
 } from '@/services/ai/classifier'
 
 // 允许的文件类型
@@ -38,10 +40,13 @@ export const useUploadStore = defineStore('upload', () => {
   // AI 分析状态
   const aiAnalyzing = ref(false)
   const aiAnalyzingCount = ref(0)
+  const metadataStatus = ref('idle')
+  const metadataError = ref(null)
+  const metadataPendingPath = ref('')
+  const metadataRetryFileIds = ref([])
 
-  // AI 配置（可选覆盖默认值）
-  const selectedProvider = ref(null) // null = 使用默认
-  const selectedModelKey = ref(null) // null = 使用默认
+  // 上传页 AI 模型选择
+  const selectedModelKey = ref(null)
 
   // 目标路径
   const series = ref('desktop') // desktop | mobile | avatar
@@ -66,6 +71,33 @@ export const useUploadStore = defineStore('upload', () => {
   const uploadingFiles = computed(() => files.value.filter(f => f.status === 'uploading'))
   const successFiles = computed(() => files.value.filter(f => f.status === 'success'))
   const errorFiles = computed(() => files.value.filter(f => f.status === 'error'))
+
+  function getUploadModelList(credentialsStore = useCredentialsStore()) {
+    const providerPriority = {
+      [AI_PROVIDERS.GROQ]: 0,
+      [AI_PROVIDERS.MODELSCOPE]: 1
+    }
+
+    const availableProviderKeys = credentialsStore.availableProviders
+      .map(provider => provider.key)
+      .filter(provider => [AI_PROVIDERS.GROQ, AI_PROVIDERS.MODELSCOPE].includes(provider))
+
+    return getModelList()
+      .filter(model => {
+        if (availableProviderKeys.length > 0) {
+          return availableProviderKeys.includes(model.provider)
+        }
+
+        return [AI_PROVIDERS.GROQ, AI_PROVIDERS.MODELSCOPE].includes(model.provider)
+      })
+      .sort((a, b) => {
+        const providerDiff =
+          (providerPriority[a.provider] || 99) - (providerPriority[b.provider] || 99)
+        if (providerDiff !== 0) return providerDiff
+        if (a.recommended !== b.recommended) return Number(b.recommended) - Number(a.recommended)
+        return 0
+      })
+  }
 
   // 生成唯一 ID
   function generateId() {
@@ -144,9 +176,25 @@ export const useUploadStore = defineStore('upload', () => {
           }
         }
 
+        let fileHash = null
+        let cachedAiMetadata = null
+
+        if (uploadMode.value === 'ai') {
+          try {
+            fileHash = await computeFileHash(processedFile)
+            cachedAiMetadata = getCachedAiMetadata(fileHash)
+            if (cachedAiMetadata?.error) {
+              cachedAiMetadata = null
+            }
+          } catch (error) {
+            console.warn(`文件哈希计算失败，跳过 AI 缓存恢复: ${file.name}`, error)
+          }
+        }
+
         validFiles.push({
           id,
           file: processedFile,
+          fileHash,
           name: file.name,
           size: processedFile.size,
           originalSize,
@@ -161,7 +209,7 @@ export const useUploadStore = defineStore('upload', () => {
           targetL1: categoryL1.value,
           targetL2: categoryL2.value,
           // AI 元数据（由 AI 分析填充，可选）
-          aiMetadata: null
+          aiMetadata: cachedAiMetadata
         })
       } else {
         // 可以在这里触发错误提示
@@ -170,6 +218,12 @@ export const useUploadStore = defineStore('upload', () => {
     }
 
     files.value.push(...validFiles)
+
+    validFiles.forEach(file => {
+      if (file.aiMetadata) {
+        setFileAiMetadata(file.id, file.aiMetadata)
+      }
+    })
 
     // AI 模式下自动触发分析
     if (uploadMode.value === 'ai' && validFiles.length > 0) {
@@ -189,8 +243,14 @@ export const useUploadStore = defineStore('upload', () => {
       return
     }
 
-    // 使用选择的 Provider，或默认的
-    const provider = selectedProvider.value || credentialsStore.defaultProvider
+    const availableModels = getUploadModelList(credentialsStore)
+    let selectedModel = availableModels.find(model => model.key === selectedModelKey.value)
+
+    if (!selectedModel) {
+      selectedModel = availableModels[0] || getRecommendedModel(AI_PROVIDERS.GROQ)
+    }
+
+    const provider = selectedModel?.provider || credentialsStore.defaultProvider
     const credentials = credentialsStore.getCredentialsByProvider(provider)
 
     if (!credentials) {
@@ -198,19 +258,22 @@ export const useUploadStore = defineStore('upload', () => {
       return
     }
 
-    // 使用选择的模型，或该 Provider 的默认模型
-    const providerModels = getModelList(provider)
-    let modelKey = selectedModelKey.value
-    if (!modelKey || !providerModels.find(m => m.key === modelKey)) {
-      modelKey = providerModels.length > 0 ? providerModels[0].key : CLASSIFIER_CONFIG.defaultModel
+    const modelKey = selectedModel?.key || CLASSIFIER_CONFIG.defaultModel
+
+    const filesNeedingAnalysis = filesToAnalyze.filter(file => !file.aiMetadata)
+
+    if (filesNeedingAnalysis.length === 0) {
+      aiAnalyzing.value = false
+      aiAnalyzingCount.value = 0
+      return
     }
 
     aiAnalyzing.value = true
-    aiAnalyzingCount.value = filesToAnalyze.length
+    aiAnalyzingCount.value = filesNeedingAnalysis.length
 
     // 并行分析所有文件（但限制并发数）
     const concurrency = 3
-    const queue = [...filesToAnalyze]
+    const queue = [...filesNeedingAnalysis]
 
     async function processNext() {
       while (queue.length > 0) {
@@ -273,7 +336,7 @@ export const useUploadStore = defineStore('upload', () => {
 
     // 启动并发分析
     const workers = []
-    for (let i = 0; i < Math.min(concurrency, filesToAnalyze.length); i++) {
+    for (let i = 0; i < Math.min(concurrency, filesNeedingAnalysis.length); i++) {
       workers.push(processNext())
     }
 
@@ -317,6 +380,10 @@ export const useUploadStore = defineStore('upload', () => {
     const file = files.value.find(f => f.id === fileId)
     if (file) {
       file.aiMetadata = aiMetadata
+
+      if (file.fileHash && aiMetadata && !aiMetadata.error) {
+        setCachedAiMetadata(file.fileHash, aiMetadata)
+      }
 
       // 在 AI 模式下自动应用推荐的分类
       if (autoApply && aiMetadata && file.status === 'pending') {
@@ -436,11 +503,21 @@ export const useUploadStore = defineStore('upload', () => {
   const HASH_STORAGE_KEY = 'uploaded_hashes'
   const HASH_MAX_COUNT = 500 // 最多保留 500 条
   const HASH_EXPIRE_DAYS = 30 // 30 天后过期
+  const PENDING_UPLOAD_STORAGE_KEY = 'pending_uploaded_hashes'
+  const AI_METADATA_STORAGE_KEY = 'upload_ai_metadata_cache'
+  const AI_METADATA_MAX_COUNT = 500
+  const AI_METADATA_EXPIRE_DAYS = 30
 
   // 内存缓存，减少localStorage读取
   let hashCache = null
+  let pendingUploadCache = null
+  let aiMetadataCache = null
   let hashCacheDirty = false
+  let pendingUploadCacheDirty = false
+  let aiMetadataCacheDirty = false
   let saveTimer = null
+  let pendingUploadSaveTimer = null
+  let aiMetadataSaveTimer = null
 
   function getUploadedHashes() {
     // 使用内存缓存
@@ -460,7 +537,7 @@ export const useUploadStore = defineStore('upload', () => {
       // 过滤掉过期的记录
       const valid = {}
       for (const [hash, data] of Object.entries(hashes)) {
-        if (now - data.time < expireMs) {
+        if (now - data.time < expireMs && data.metadataCommitted !== false) {
           valid[hash] = data
         }
       }
@@ -491,9 +568,69 @@ export const useUploadStore = defineStore('upload', () => {
     }
   }
 
+  function getPendingUploadedHashes() {
+    if (pendingUploadCache) return pendingUploadCache
+
+    try {
+      const stored = localStorage.getItem(PENDING_UPLOAD_STORAGE_KEY)
+      if (!stored) {
+        pendingUploadCache = {}
+        return pendingUploadCache
+      }
+
+      const hashes = JSON.parse(stored)
+      const now = Date.now()
+      const expireMs = HASH_EXPIRE_DAYS * 24 * 60 * 60 * 1000
+      const valid = {}
+
+      for (const [hash, data] of Object.entries(hashes)) {
+        if (now - data.time < expireMs) {
+          valid[hash] = data
+        }
+      }
+
+      const legacyStored = localStorage.getItem(HASH_STORAGE_KEY)
+      if (legacyStored) {
+        const legacyHashes = JSON.parse(legacyStored)
+        for (const [hash, data] of Object.entries(legacyHashes)) {
+          if (data.metadataCommitted === false && now - data.time < expireMs) {
+            valid[hash] = {
+              filename: data.filename,
+              path: data.path,
+              time: data.time
+            }
+          }
+        }
+      }
+
+      pendingUploadCache = valid
+      return pendingUploadCache
+    } catch {
+      pendingUploadCache = {}
+      return pendingUploadCache
+    }
+  }
+
+  function savePendingUploadsToStorage() {
+    if (!pendingUploadCache || !pendingUploadCacheDirty) return
+
+    try {
+      const entries = Object.entries(pendingUploadCache)
+      if (entries.length > HASH_MAX_COUNT) {
+        entries.sort((a, b) => b[1].time - a[1].time)
+        pendingUploadCache = Object.fromEntries(entries.slice(0, HASH_MAX_COUNT))
+      }
+
+      localStorage.setItem(PENDING_UPLOAD_STORAGE_KEY, JSON.stringify(pendingUploadCache))
+      pendingUploadCacheDirty = false
+    } catch (error) {
+      console.error('保存待提交上传记录失败:', error)
+    }
+  }
+
   function addUploadedHash(hash, filename, path) {
     const hashes = getUploadedHashes()
-    hashes[hash] = { filename, path, time: Date.now() }
+    hashes[hash] = { filename, path, time: Date.now(), metadataCommitted: true }
     hashCacheDirty = true
 
     // 延迟保存，避免频繁写入localStorage
@@ -501,17 +638,119 @@ export const useUploadStore = defineStore('upload', () => {
     saveTimer = setTimeout(saveHashesToStorage, 1000)
   }
 
+  function addPendingUploadedHash(hash, filename, path) {
+    const hashes = getPendingUploadedHashes()
+    hashes[hash] = { filename, path, time: Date.now() }
+    pendingUploadCacheDirty = true
+
+    if (pendingUploadSaveTimer) clearTimeout(pendingUploadSaveTimer)
+    pendingUploadSaveTimer = setTimeout(savePendingUploadsToStorage, 1000)
+  }
+
   function isHashUploaded(hash) {
     const hashes = getUploadedHashes()
     return hashes[hash] || null
   }
 
+  function getPendingUploadedHash(hash) {
+    const hashes = getPendingUploadedHashes()
+    return hashes[hash] || null
+  }
+
+  function markHashesMetadataCommitted(uploadedFiles) {
+    if (!uploadedFiles?.length) return
+
+    const pendingHashes = getPendingUploadedHashes()
+    let updatedPending = false
+
+    uploadedFiles.forEach(file => {
+      if (file.fileHash && pendingHashes[file.fileHash]) {
+        addUploadedHash(file.fileHash, file.name, pendingHashes[file.fileHash].path)
+        delete pendingHashes[file.fileHash]
+        updatedPending = true
+      }
+    })
+
+    if (updatedPending) {
+      pendingUploadCacheDirty = true
+      if (pendingUploadSaveTimer) clearTimeout(pendingUploadSaveTimer)
+      pendingUploadSaveTimer = setTimeout(savePendingUploadsToStorage, 1000)
+    }
+  }
+
   // 清除上传记录（手动清理）
   function clearUploadedHashes() {
     hashCache = {}
+    pendingUploadCache = {}
     hashCacheDirty = false
+    pendingUploadCacheDirty = false
     if (saveTimer) clearTimeout(saveTimer)
+    if (pendingUploadSaveTimer) clearTimeout(pendingUploadSaveTimer)
     localStorage.removeItem(HASH_STORAGE_KEY)
+    localStorage.removeItem(PENDING_UPLOAD_STORAGE_KEY)
+  }
+
+  function getCachedAiMetadataMap() {
+    if (aiMetadataCache) return aiMetadataCache
+
+    try {
+      const stored = localStorage.getItem(AI_METADATA_STORAGE_KEY)
+      if (!stored) {
+        aiMetadataCache = {}
+        return aiMetadataCache
+      }
+
+      const cache = JSON.parse(stored)
+      const now = Date.now()
+      const expireMs = AI_METADATA_EXPIRE_DAYS * 24 * 60 * 60 * 1000
+      const valid = {}
+
+      for (const [hash, data] of Object.entries(cache)) {
+        if (now - data.time < expireMs && data.aiMetadata) {
+          valid[hash] = data
+        }
+      }
+
+      aiMetadataCache = valid
+      return aiMetadataCache
+    } catch {
+      aiMetadataCache = {}
+      return aiMetadataCache
+    }
+  }
+
+  function saveAiMetadataToStorage() {
+    if (!aiMetadataCache || !aiMetadataCacheDirty) return
+
+    try {
+      const entries = Object.entries(aiMetadataCache)
+      if (entries.length > AI_METADATA_MAX_COUNT) {
+        entries.sort((a, b) => b[1].time - a[1].time)
+        aiMetadataCache = Object.fromEntries(entries.slice(0, AI_METADATA_MAX_COUNT))
+      }
+
+      localStorage.setItem(AI_METADATA_STORAGE_KEY, JSON.stringify(aiMetadataCache))
+      aiMetadataCacheDirty = false
+    } catch (error) {
+      console.error('保存 AI 元数据缓存失败:', error)
+    }
+  }
+
+  function getCachedAiMetadata(hash) {
+    if (!hash) return null
+    const cache = getCachedAiMetadataMap()
+    return cache[hash]?.aiMetadata || null
+  }
+
+  function setCachedAiMetadata(hash, aiMetadata) {
+    if (!hash || !aiMetadata) return
+
+    const cache = getCachedAiMetadataMap()
+    cache[hash] = { aiMetadata, time: Date.now() }
+    aiMetadataCacheDirty = true
+
+    if (aiMetadataSaveTimer) clearTimeout(aiMetadataSaveTimer)
+    aiMetadataSaveTimer = setTimeout(saveAiMetadataToStorage, 1000)
   }
 
   // 上传单个文件
@@ -545,25 +784,43 @@ export const useUploadStore = defineStore('upload', () => {
       const message = `Upload: ${uploadFile.name}`
 
       // 计算文件 Hash 并检查是否已上传
-      const hash = await computeFileHash(uploadFile.file)
+      const hash = uploadFile.fileHash || (await computeFileHash(uploadFile.file))
+      uploadFile.fileHash = hash
       const existingUpload = isHashUploaded(hash)
       if (existingUpload) {
         clearInterval(progressInterval)
+
+        uploadFile.reusedExisting = false
         uploadFile.status = 'error'
-        uploadFile.error = `文件内容重复，已在 ${existingUpload.path} 上传过`
+        uploadFile.error = `该图片已完整上传，请勿重复上传（${existingUpload.path}）`
         return { success: false, errorType: 'DUPLICATE', error: uploadFile.error }
+      }
+
+      const pendingUpload = getPendingUploadedHash(hash)
+      if (pendingUpload) {
+        clearInterval(progressInterval)
+        uploadFile.progress = 100
+        uploadFile.status = 'success'
+        uploadFile.error = null
+        uploadFile.reusedExisting = true
+        return {
+          success: true,
+          reusedExisting: true,
+          existingPath: pendingUpload.path
+        }
       }
 
       await githubService.uploadImage(owner, repo, path, uploadFile.file, message, branch)
 
       uploadFile.progress = 100
       uploadFile.status = 'success'
+      uploadFile.reusedExisting = false
 
       // 清理进度定时器
       clearInterval(progressInterval)
 
-      // 记录已上传的 Hash
-      addUploadedHash(hash, uploadFile.name, path)
+      // 记录已上传图片，等待 metadata 成功后再转为正式记录
+      addPendingUploadedHash(hash, uploadFile.name, path)
 
       // 添加到历史记录
       historyStore.addRecord({
@@ -618,6 +875,8 @@ export const useUploadStore = defineStore('upload', () => {
     }
 
     uploading.value = true
+    metadataStatus.value = 'idle'
+    metadataError.value = null
     const results = []
     const uploadedFiles = [] // 收集成功上传的文件
     let permissionError = false
@@ -660,7 +919,23 @@ export const useUploadStore = defineStore('upload', () => {
     // 如果有成功上传的文件，生成 metadata-pending
     let metadataResult = null
     if (uploadedFiles.length > 0 && !permissionError) {
+      metadataStatus.value = 'uploading'
       metadataResult = await generatePendingMetadata(uploadedFiles)
+
+      if (metadataResult?.success) {
+        markHashesMetadataCommitted(uploadedFiles)
+        metadataStatus.value = 'success'
+        metadataError.value = null
+        metadataPendingPath.value = metadataResult.path || ''
+        metadataRetryFileIds.value = []
+      } else {
+        metadataStatus.value = 'error'
+        metadataError.value = metadataResult?.error || 'metadata 生成失败'
+        metadataPendingPath.value = ''
+        metadataRetryFileIds.value = uploadedFiles.map(file => file.id)
+      }
+    } else if (!permissionError) {
+      metadataStatus.value = 'idle'
     }
 
     // 返回结果，包含权限错误标记和 metadata 生成结果
@@ -693,6 +968,35 @@ export const useUploadStore = defineStore('upload', () => {
     })
 
     return uploadAll()
+  }
+
+  async function retryPendingMetadata() {
+    if (metadataStatus.value === 'uploading') return null
+
+    const retryFiles = metadataRetryFileIds.value
+      .map(id => files.value.find(file => file.id === id))
+      .filter(Boolean)
+
+    if (retryFiles.length === 0) {
+      throw new Error('没有可重试的元数据文件')
+    }
+
+    metadataStatus.value = 'uploading'
+    metadataError.value = null
+
+    const result = await generatePendingMetadata(retryFiles)
+
+    if (result?.success) {
+      markHashesMetadataCommitted(retryFiles)
+      metadataStatus.value = 'success'
+      metadataPendingPath.value = result.path || ''
+      metadataRetryFileIds.value = []
+    } else {
+      metadataStatus.value = 'error'
+      metadataError.value = result?.error || 'metadata 生成失败'
+    }
+
+    return result
   }
 
   // 生成并上传 metadata-pending 文件
@@ -838,14 +1142,6 @@ export const useUploadStore = defineStore('upload', () => {
     return pending.every(f => f.targetPath)
   }
 
-  // 设置 AI Provider
-  function setAiProvider(provider) {
-    selectedProvider.value = provider
-    // 切换 Provider 时重置模型选择
-    selectedModelKey.value = null
-  }
-
-  // 设置 AI 模型
   function setAiModel(modelKey) {
     selectedModelKey.value = modelKey
   }
@@ -853,15 +1149,14 @@ export const useUploadStore = defineStore('upload', () => {
   // 获取当前 AI 配置信息
   function getCurrentAiConfig() {
     const credentialsStore = useCredentialsStore()
-    const provider = selectedProvider.value || credentialsStore.defaultProvider
-    const providerModels = getModelList(provider)
+    const availableModels = getUploadModelList(credentialsStore)
+    const model =
+      availableModels.find(item => item.key === selectedModelKey.value) ||
+      availableModels[0] ||
+      getRecommendedModel(AI_PROVIDERS.GROQ)
 
-    let modelKey = selectedModelKey.value
-    if (!modelKey || !providerModels.find(m => m.key === modelKey)) {
-      modelKey = providerModels.length > 0 ? providerModels[0].key : CLASSIFIER_CONFIG.defaultModel
-    }
-
-    const model = providerModels.find(m => m.key === modelKey)
+    const provider = model?.provider || credentialsStore.defaultProvider
+    const modelKey = model?.key || CLASSIFIER_CONFIG.defaultModel
 
     const providerDisplay = {
       groq: { name: 'Groq AI', icon: '⚡' },
@@ -876,7 +1171,7 @@ export const useUploadStore = defineStore('upload', () => {
       providerIcon: display.icon,
       modelKey,
       modelName: model?.name || modelKey,
-      availableModels: providerModels
+      availableModels
     }
   }
 
@@ -888,9 +1183,19 @@ export const useUploadStore = defineStore('upload', () => {
     hashWorker.terminate()
     // 保存哈希缓存到localStorage
     saveHashesToStorage()
+    savePendingUploadsToStorage()
+    saveAiMetadataToStorage()
     if (saveTimer) {
       clearTimeout(saveTimer)
       saveTimer = null
+    }
+    if (pendingUploadSaveTimer) {
+      clearTimeout(pendingUploadSaveTimer)
+      pendingUploadSaveTimer = null
+    }
+    if (aiMetadataSaveTimer) {
+      clearTimeout(aiMetadataSaveTimer)
+      aiMetadataSaveTimer = null
     }
     // 清空文件列表
     files.value = []
@@ -908,8 +1213,10 @@ export const useUploadStore = defineStore('upload', () => {
     // AI 分析状态
     aiAnalyzing,
     aiAnalyzingCount,
-    // AI 配置
-    selectedProvider,
+    metadataStatus,
+    metadataError,
+    metadataPendingPath,
+    metadataRetryFileIds,
     selectedModelKey,
     // 计算属性
     targetPath,
@@ -929,11 +1236,12 @@ export const useUploadStore = defineStore('upload', () => {
     uploadFile,
     uploadAll,
     retryFailed,
+    retryPendingMetadata,
     setTarget,
     setUploadMode,
-    setAiProvider,
     setAiModel,
     getCurrentAiConfig,
+    getUploadModelList,
     updateFileTarget,
     updateFilesTarget,
     setFileAiMetadata,
@@ -950,6 +1258,7 @@ export const useUploadStore = defineStore('upload', () => {
     computeFileHash,
     isHashUploaded,
     clearUploadedHashes,
+    getCachedAiMetadata,
     cleanup
   }
 })

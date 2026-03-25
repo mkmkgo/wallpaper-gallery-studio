@@ -236,28 +236,28 @@ defineExpose({
   }
 
   &__grid {
+    --upload-grid-item-size: 144px;
+
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: $spacing-4;
+    grid-template-columns: repeat(auto-fill, minmax(var(--upload-grid-item-size), 1fr));
+    grid-auto-rows: var(--upload-grid-item-size);
+    gap: $spacing-5;
     overflow-y: auto;
     padding-right: $spacing-2;
     padding-bottom: $spacing-4;
     align-content: start;
+    align-items: start;
+    justify-items: stretch;
     min-height: 0;
+    scrollbar-gutter: stable;
 
-    // 限制最大列数，避免图片过小
     @media (min-width: 1400px) {
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      --upload-grid-item-size: 156px;
     }
 
     @media (min-width: 1600px) {
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    }
-
-    // 限制最多显示的列数
-    @supports (grid-template-columns: repeat(auto-fill, minmax(max(120px, 100% / 8), 1fr))) {
-      grid-template-columns: repeat(auto-fill, minmax(max(120px, 100% / 8), 1fr));
+      --upload-grid-item-size: 168px;
     }
 
     &::-webkit-scrollbar {

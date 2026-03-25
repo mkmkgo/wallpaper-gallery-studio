@@ -35,6 +35,9 @@
         <p class="upload-progress__hint">
           {{ uploading ? `正在上传 ${currentIndex + 1}/${totalCount}...` : statusText }}
         </p>
+        <p v-if="metadataStatus === 'error'" class="upload-progress__metadata-error">
+          元数据生成失败：{{ metadataError }}
+        </p>
       </div>
 
       <!-- 文件列表 -->
@@ -56,7 +59,7 @@
               </template>
               <template v-else-if="file.status === 'success'">
                 <el-icon><CircleCheck /></el-icon>
-                上传成功
+                {{ file.reusedExisting ? '图片已上传，正在补交元数据' : '上传成功' }}
               </template>
               <template v-else-if="file.status === 'error'">
                 <el-icon><CircleClose /></el-icon>
@@ -89,6 +92,13 @@
 
     <template #footer>
       <div class="upload-progress__footer">
+        <el-button
+          v-if="!uploading && metadataStatus === 'error'"
+          type="warning"
+          @click="$emit('retry-metadata')"
+        >
+          重试元数据
+        </el-button>
         <el-button v-if="!uploading && errorCount > 0" type="warning" @click="$emit('retry')">
           重试失败
         </el-button>
@@ -109,10 +119,12 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   files: { type: Array, default: () => [] },
   uploading: { type: Boolean, default: false },
-  currentIndex: { type: Number, default: -1 }
+  currentIndex: { type: Number, default: -1 },
+  metadataStatus: { type: String, default: 'idle' },
+  metadataError: { type: String, default: '' }
 })
 
-const emit = defineEmits(['update:modelValue', 'retry', 'close'])
+const emit = defineEmits(['update:modelValue', 'retry', 'retry-metadata', 'close'])
 
 const visible = computed({
   get: () => props.modelValue,
@@ -164,6 +176,7 @@ const progressStatus = computed(() => {
 
 const statusText = computed(() => {
   if (props.uploading) return '上传中...'
+  if (props.metadataStatus === 'error') return '图片已上传，但元数据生成失败'
   if (errorCount.value > 0) return `完成，${errorCount.value} 个文件上传失败`
   return '全部上传成功！'
 })
@@ -180,7 +193,8 @@ watch(
         preview: f.preview,
         status: f.status,
         progress: f.progress,
-        error: f.error
+        error: f.error,
+        reusedExisting: !!f.reusedExisting
       }))
       finalStats.value = {
         success: props.files.filter(f => f.status === 'success').length,
@@ -252,6 +266,12 @@ function handleClose() {
 
   &__bar {
     margin-bottom: $spacing-2;
+  }
+
+  &__metadata-error {
+    margin: $spacing-2 0 0;
+    color: $warning;
+    font-size: $font-size-sm;
   }
 
   &__hint {

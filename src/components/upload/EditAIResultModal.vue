@@ -1,11 +1,11 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+      <div v-if="visible" class="modal-overlay">
         <div class="modal">
           <div class="modal__header">
             <h3>🤖 编辑 AI 分析结果</h3>
-            <button class="modal__close" @click="$emit('close')">
+            <button class="modal__close" @click="handleRequestClose">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path
                   d="M1 1L13 13M1 13L13 1"
@@ -152,7 +152,7 @@
           </div>
 
           <div class="modal__footer">
-            <button class="modal__btn modal__btn--cancel" @click="$emit('close')">取消</button>
+            <button class="modal__btn modal__btn--cancel" @click="handleRequestClose">取消</button>
             <button
               class="modal__btn modal__btn--confirm"
               :disabled="saving || !isFormValid"
@@ -170,6 +170,7 @@
 
 <script setup>
 import { reactive, computed, watch, ref, onMounted } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import CustomSelect from '@/components/common/CustomSelect.vue'
 import { githubService } from '@/services/github'
 import { useConfigStore } from '@/stores/config'
@@ -208,6 +209,7 @@ const categoryData = ref({
 })
 
 const loadingCategories = ref(false)
+const initialSnapshot = ref('')
 
 // 从 GitHub 获取分类数据
 async function loadCategoriesFromGitHub() {
@@ -299,6 +301,20 @@ const isFormValid = computed(() => {
   )
 })
 
+function getFormSnapshot() {
+  return {
+    series: form.series,
+    secondary: form.secondary,
+    third: form.third,
+    filenames: [...form.filenames],
+    displayTitle: form.displayTitle,
+    keywords: [...form.keywords],
+    description: form.description
+  }
+}
+
+const isDirty = computed(() => JSON.stringify(getFormSnapshot()) !== initialSnapshot.value)
+
 // 监听文件变化，初始化表单
 watch(
   () => [props.visible, props.file],
@@ -324,7 +340,17 @@ watch(
         form.displayTitle = metadata.displayTitle || ''
         form.keywords = metadata.keywords?.length > 0 ? [...metadata.keywords] : ['']
         form.description = metadata.description || ''
+      } else {
+        form.series = '🖥️ 桌面壁纸'
+        form.secondary = ''
+        form.third = ''
+        form.filenames = ['']
+        form.displayTitle = ''
+        form.keywords = ['']
+        form.description = ''
       }
+
+      initialSnapshot.value = JSON.stringify(getFormSnapshot())
     }
   },
   { immediate: true }
@@ -394,6 +420,26 @@ function addKeyword() {
 function removeKeyword(index) {
   if (form.keywords.length > 1) {
     form.keywords.splice(index, 1)
+  }
+}
+
+async function handleRequestClose() {
+  if (props.saving) return
+
+  if (!isDirty.value) {
+    emit('close')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm('当前修改尚未保存，确定要关闭吗？', '放弃修改', {
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑',
+      type: 'warning'
+    })
+    emit('close')
+  } catch {
+    // 继续编辑
   }
 }
 

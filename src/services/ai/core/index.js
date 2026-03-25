@@ -11,8 +11,7 @@ export {
   BaseAIProvider,
   CloudflareProvider,
   GroqProvider,
-  ModelScopeProvider,
-  NvidiaProvider
+  ModelScopeProvider
 } from './providers'
 
 // 导出图片处理相关
