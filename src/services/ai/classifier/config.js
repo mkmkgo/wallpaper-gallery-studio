@@ -135,10 +135,10 @@ export const CLASSIFIER_MODELS = {
  */
 export const CLASSIFIER_CONFIG = {
   // 默认 Provider
-  defaultProvider: AI_PROVIDERS.MODELSCOPE,
+  defaultProvider: AI_PROVIDERS.GROQ,
 
   // 默认模型
-  defaultModel: 'modelscope-qwen3-vl-235b',
+  defaultModel: 'groq-llama-4-scout',
 
   // 默认提示词模板
   defaultPromptTemplate: 'default',

@@ -172,10 +172,10 @@
 import { reactive, computed, watch, ref, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import CustomSelect from '@/components/common/CustomSelect.vue'
-import { githubService } from '@/services/github'
-import { useConfigStore } from '@/stores/config'
-
-const configStore = useConfigStore()
+import {
+  getFallbackUploadCategoryTree,
+  getUploadCategoryTree
+} from '@/services/upload/category-directory'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -202,65 +202,18 @@ const seriesLabelMap = {
 }
 
 // 动态分类数据
-const categoryData = ref({
-  desktop: { secondary: [], third: {} },
-  mobile: { secondary: [], third: {} },
-  avatar: { secondary: [], third: {} }
-})
+const categoryData = ref(getFallbackUploadCategoryTree())
 
 const loadingCategories = ref(false)
 const initialSnapshot = ref('')
 
 // 从 GitHub 获取分类数据
-async function loadCategoriesFromGitHub() {
+async function loadCategoriesFromGitHub(force = false) {
   if (loadingCategories.value) return
 
   loadingCategories.value = true
   try {
-    const { owner, repo, branch } = configStore.config
-
-    // 获取所有系列的分类
-    for (const seriesKey of ['desktop', 'mobile', 'avatar']) {
-      try {
-        // 获取一级分类（二级分类）
-        const l1Contents = await githubService.getContents(
-          owner,
-          repo,
-          `wallpaper/${seriesKey}`,
-          branch
-        )
-        const l1Categories = l1Contents.filter(item => item.type === 'dir').map(item => item.name)
-
-        categoryData.value[seriesKey].secondary = l1Categories
-
-        // 获取二级分类下的三级分类
-        const thirdCategories = {}
-        for (const l1Category of l1Categories) {
-          try {
-            const l2Contents = await githubService.getContents(
-              owner,
-              repo,
-              `wallpaper/${seriesKey}/${l1Category}`,
-              branch
-            )
-            const l2Categories = l2Contents
-              .filter(item => item.type === 'dir')
-              .map(item => item.name)
-
-            if (l2Categories.length > 0) {
-              thirdCategories[l1Category] = l2Categories
-            }
-          } catch (error) {
-            // 如果没有三级分类，忽略错误
-            console.log(`No third-level categories for ${seriesKey}/${l1Category}`)
-          }
-        }
-
-        categoryData.value[seriesKey].third = thirdCategories
-      } catch (error) {
-        console.error(`Failed to load categories for ${seriesKey}:`, error)
-      }
-    }
+    categoryData.value = await getUploadCategoryTree({ force })
   } catch (error) {
     console.error('Failed to load categories from GitHub:', error)
   } finally {
@@ -321,7 +274,7 @@ watch(
   ([visible, file]) => {
     if (visible) {
       // 弹窗打开时加载分类数据
-      loadCategoriesFromGitHub()
+      loadCategoriesFromGitHub(true)
 
       if (file?.aiMetadata) {
         const metadata = file.aiMetadata

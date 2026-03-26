@@ -21,37 +21,38 @@
         </template>
       </el-alert>
 
-      <!-- 顶部信息栏 -->
       <div class="upload-view__header">
         <div class="upload-view__title-area">
-          <div class="upload-view__title-badge">🎨 Workspace</div>
-          <h1 class="upload-view__title">上传中心</h1>
+          <div class="upload-view__title-main">
+            <div class="upload-view__title-badge">🎨 Upload Workspace</div>
+            <h1 class="upload-view__title">上传中心</h1>
+          </div>
+          <!-- <p class="upload-view__subtitle">让上传列表成为主角，预览与工作流作为辅助区常驻右侧。</p> -->
         </div>
 
-        <!-- 壁纸统计条 -->
-        <WallpaperStatsBar
-          :stats-data="workflowStore.statsData"
-          class="upload-view__stats-bar"
-          @show-history="showHistoryModal = true"
-        />
-
-        <HeaderStats
-          :stats="stats"
-          :rate-limit="rateLimit"
-          :loading="loadingStats"
-          @refresh="refreshStats"
-        />
+        <div class="upload-view__meta">
+          <span class="upload-view__meta-chip">{{ currentModeLabel }}</span>
+          <span class="upload-view__meta-chip">{{ currentSeriesLabel }}</span>
+          <span
+            class="upload-view__meta-chip upload-view__meta-chip--highlight"
+            :title="currentContextLabel"
+          >
+            {{ currentContextLabel }}
+          </span>
+        </div>
       </div>
 
-      <!-- 三栏布局 -->
+      <!-- 工作区布局 -->
       <div class="upload-view__content">
         <CategorySidebar
           :key="treeKey"
           :series="series"
           :tree-data="treeData"
           :loading="loading"
+          :syncing="syncingCategories"
           :target-path="uploadStore.targetPath"
           :load-node="loadNode"
+          class="upload-view__categories"
           @select-series="selectSeries"
           @select-category="handleCategorySelect"
           @create="showModal = true"
@@ -59,7 +60,6 @@
           @refresh="handleRefreshCategories"
         />
 
-        <!-- 中间列：上传面板 -->
         <div class="upload-view__center">
           <UploadPanel
             :target-path="uploadStore.targetPath"
@@ -94,11 +94,84 @@
           />
         </div>
 
-        <!-- 右侧栏：预览 + 工作流 -->
-        <div class="upload-view__sidebar">
-          <ImagePreview :file="previewFile" class="upload-view__preview" />
-          <WorkflowPanel class="upload-view__workflow" />
-        </div>
+        <aside ref="sidebarRef" class="upload-view__sidebar">
+          <section ref="overviewRef" class="upload-view__overview">
+            <div class="upload-view__overview-header">
+              <div>
+                <p class="upload-view__overview-label">概览</p>
+                <h2 class="upload-view__overview-title">统计与配额</h2>
+              </div>
+              <div class="upload-view__overview-actions">
+                <button class="upload-view__overview-btn" @click="refreshStats">刷新</button>
+                <button class="upload-view__overview-btn" @click="showHistoryModal = true">
+                  历史
+                </button>
+              </div>
+            </div>
+
+            <div class="upload-view__overview-grid">
+              <div class="upload-view__overview-item">
+                <span class="upload-view__overview-item-icon">🖥️</span>
+                <div>
+                  <span class="upload-view__overview-item-label">电脑</span>
+                  <strong class="upload-view__overview-item-value">{{ stats.desktop }}</strong>
+                </div>
+              </div>
+              <div class="upload-view__overview-item">
+                <span class="upload-view__overview-item-icon">📱</span>
+                <div>
+                  <span class="upload-view__overview-item-label">手机</span>
+                  <strong class="upload-view__overview-item-value">{{ stats.mobile }}</strong>
+                </div>
+              </div>
+              <div class="upload-view__overview-item">
+                <span class="upload-view__overview-item-icon">👤</span>
+                <div>
+                  <span class="upload-view__overview-item-label">头像</span>
+                  <strong class="upload-view__overview-item-value">{{ stats.avatar }}</strong>
+                </div>
+              </div>
+              <div class="upload-view__overview-item upload-view__overview-item--api">
+                <span class="upload-view__overview-item-icon">⚡</span>
+                <div>
+                  <span class="upload-view__overview-item-label">API 剩余</span>
+                  <strong class="upload-view__overview-item-value">
+                    {{ rateLimit.remaining }}/{{ rateLimit.limit }}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="upload-view__quota">
+              <div class="upload-view__quota-bar">
+                <div class="upload-view__quota-fill" :style="{ width: quotaPercent + '%' }"></div>
+              </div>
+              <span class="upload-view__quota-text">当前可用额度 {{ quotaPercent }}%</span>
+            </div>
+          </section>
+
+          <div
+            ref="previewPanelRef"
+            class="upload-view__accordion-panel upload-view__preview-panel"
+          >
+            <ImagePreview
+              :file="previewFile"
+              :collapsed="activeSidebarPanel !== 'preview'"
+              class="upload-view__preview"
+              @toggle="openSidebarPanel('preview')"
+            />
+          </div>
+          <div
+            ref="workflowPanelRef"
+            class="upload-view__accordion-panel upload-view__workflow-panel"
+          >
+            <WorkflowPanel
+              :collapsed="activeSidebarPanel !== 'workflow'"
+              class="upload-view__workflow"
+              @toggle="openSidebarPanel('workflow')"
+            />
+          </div>
+        </aside>
       </div>
 
       <CreateCategoryModal
@@ -161,15 +234,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { gsap } from 'gsap'
 import MainLayout from '@/components/MainLayout.vue'
-import HeaderStats from '@/components/upload/HeaderStats.vue'
 import CategorySidebar from '@/components/upload/CategorySidebar.vue'
 import UploadPanel from '@/components/upload/UploadPanel.vue'
 import ImagePreview from '@/components/upload/ImagePreview.vue'
 import WorkflowPanel from '@/components/upload/WorkflowPanel.vue'
-import WallpaperStatsBar from '@/components/upload/WallpaperStatsBar.vue'
 import ReleaseHistoryModal from '@/components/upload/ReleaseHistoryModal.vue'
 import CreateCategoryModal from '@/components/upload/CreateCategoryModal.vue'
 import DeleteCategoryModal from '@/components/upload/DeleteCategoryModal.vue'
@@ -178,6 +250,7 @@ import TargetSelectModal from '@/components/upload/TargetSelectModal.vue'
 import EditAIResultModal from '@/components/upload/EditAIResultModal.vue'
 import { githubService } from '@/services/github'
 import { localStorageService } from '@/services/localStorage'
+import { clearUploadCategoryTreeCache } from '@/services/upload/category-directory'
 import { useConfigStore } from '@/stores/config'
 import { useUploadStore } from '@/stores/upload'
 import { useAuthStore } from '@/stores/auth'
@@ -191,14 +264,21 @@ const authStore = useAuthStore()
 const workflowStore = useWorkflowStore()
 
 const viewRef = ref(null)
+const sidebarRef = ref(null)
+const overviewRef = ref(null)
+const previewPanelRef = ref(null)
+const workflowPanelRef = ref(null)
+const forceCategoryFetch = ref(false)
 const pageLoading = ref(false) // 页面加载状态，默认不显示 loading
 const series = ref('desktop')
 const treeData = ref([])
 const treeKey = ref(0) // 用于强制刷新树组件
 const loading = ref(false)
+const syncingCategories = ref(false)
 const loadingStats = ref(false)
 const selectedL1 = ref('')
 const previewFile = ref(null)
+const activeSidebarPanel = ref('workflow')
 const showModal = ref(false)
 const showProgressModal = ref(false)
 const showHistoryModal = ref(false)
@@ -216,9 +296,79 @@ const stats = reactive({ desktop: 0, mobile: 0, avatar: 0, total: 0 })
 
 const uploading = computed(() => uploadStore.uploading)
 const rateLimit = computed(() => uploadStore.getRateLimit())
+const quotaPercent = computed(() =>
+  Math.round((rateLimit.value.remaining / rateLimit.value.limit) * 100)
+)
 
 // AI 配置
 const aiConfig = computed(() => uploadStore.getCurrentAiConfig())
+const currentModeLabel = computed(() =>
+  uploadStore.uploadMode === 'ai' ? 'AI 智能分类' : '手动上传'
+)
+const currentSeriesLabel = computed(() => {
+  const labels = {
+    desktop: '电脑壁纸',
+    mobile: '手机壁纸',
+    avatar: '头像壁纸'
+  }
+
+  return labels[series.value] || '未选择'
+})
+const currentContextLabel = computed(() => {
+  if (uploadStore.uploadMode === 'manual') {
+    return uploadStore.targetPath ? `目录 · ${uploadStore.targetPath}` : '目录 · 待选择'
+  }
+
+  return `模型 · ${aiConfig.value?.modelName || 'AI 自动分类'}`
+})
+
+const SIDEBAR_COLLAPSED_HEIGHT = 52
+
+function getSidebarGap() {
+  const sidebarEl = sidebarRef.value
+  if (!sidebarEl) return 16
+  const styles = window.getComputedStyle(sidebarEl)
+  return Number.parseFloat(styles.gap || styles.rowGap || '16') || 16
+}
+
+function getExpandedSidebarHeight() {
+  const sidebarEl = sidebarRef.value
+  const overviewEl = overviewRef.value
+
+  if (!sidebarEl || !overviewEl) return 320
+
+  const gap = getSidebarGap()
+  const available =
+    sidebarEl.clientHeight - overviewEl.offsetHeight - gap * 2 - SIDEBAR_COLLAPSED_HEIGHT
+
+  return Math.max(available, 320)
+}
+
+async function syncSidebarAccordion(animated = true) {
+  await nextTick()
+
+  const previewEl = previewPanelRef.value
+  const workflowEl = workflowPanelRef.value
+  if (!previewEl || !workflowEl) return
+
+  const expandedHeight = getExpandedSidebarHeight()
+  const duration = animated ? 0.68 : 0
+  const ease = 'expo.inOut'
+
+  gsap.killTweensOf([previewEl, workflowEl])
+
+  if (activeSidebarPanel.value === 'preview') {
+    gsap.to(previewEl, { height: expandedHeight, duration, ease })
+    gsap.to(workflowEl, { height: SIDEBAR_COLLAPSED_HEIGHT, duration, ease })
+  } else {
+    gsap.to(previewEl, { height: SIDEBAR_COLLAPSED_HEIGHT, duration, ease })
+    gsap.to(workflowEl, { height: expandedHeight, duration, ease })
+  }
+}
+
+function handleSidebarResize() {
+  syncSidebarAccordion(false)
+}
 
 const categoryCache = new Map()
 const CACHE_TTL = 5 * 60 * 1000
@@ -232,6 +382,36 @@ function setCache(key, data) {
   categoryCache.set(key, { data, timestamp: Date.now() })
 }
 
+function clearCategoryCaches() {
+  categoryCache.clear()
+  clearUploadCategoryTreeCache()
+  githubService.clearDirectoryCache()
+}
+
+async function waitForDirectorySync(path, { shouldExist, attempts = 8, delay = 700 } = {}) {
+  const { owner, repo, branch } = configStore.config
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      await githubService.getContents(owner, repo, path, branch, { forceRefresh: true })
+
+      if (shouldExist) {
+        return true
+      }
+    } catch (error) {
+      if (!shouldExist && (error.status === 404 || error.type === 'NOT_FOUND')) {
+        return true
+      }
+    }
+
+    if (attempt < attempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  return false
+}
+
 function selectSeries(value) {
   series.value = value
   uploadStore.setTarget(value, '', '')
@@ -239,15 +419,21 @@ function selectSeries(value) {
   loadRootCategories()
 }
 
-function handleRefreshCategories() {
-  categoryCache.clear()
+async function handleRefreshCategories() {
+  clearCategoryCaches()
+  forceCategoryFetch.value = true
+  syncingCategories.value = true
   treeKey.value++
-  loadRootCategories()
+  try {
+    await loadRootCategories(true)
+  } finally {
+    syncingCategories.value = false
+  }
 }
 
-async function loadRootCategories() {
+async function loadRootCategories(forceRefresh = false) {
   const cacheKey = `${series.value}-root`
-  const cached = getCache(cacheKey)
+  const cached = forceRefresh ? null : getCache(cacheKey)
   console.log('[loadRootCategories] cacheKey:', cacheKey, 'cached:', !!cached)
   if (cached) {
     treeData.value = cached
@@ -262,7 +448,8 @@ async function loadRootCategories() {
       owner,
       repo,
       `wallpaper/${series.value}`,
-      branch
+      branch,
+      { forceRefresh }
     )
     const categories = contents
       .filter(i => i.type === 'dir')
@@ -284,6 +471,9 @@ async function loadRootCategories() {
     treeData.value = []
   } finally {
     loading.value = false
+    if (forceRefresh) {
+      forceCategoryFetch.value = false
+    }
   }
 }
 
@@ -305,7 +495,9 @@ async function loadNode(node, resolve) {
 
   try {
     const { owner, repo, branch } = configStore.config
-    const contents = await githubService.getContents(owner, repo, node.data.path, branch)
+    const contents = await githubService.getContents(owner, repo, node.data.path, branch, {
+      forceRefresh: forceCategoryFetch.value
+    })
     const children = contents
       .filter(i => i.type === 'dir')
       .map(i => ({ name: i.name, path: i.path, type: 'l2' }))
@@ -486,7 +678,16 @@ async function handleRetryMetadata() {
 
 function selectPreview(file) {
   previewFile.value = file
+  activeSidebarPanel.value = 'preview'
 }
+
+function openSidebarPanel(panel) {
+  activeSidebarPanel.value = panel
+}
+
+watch(activeSidebarPanel, () => {
+  syncSidebarAccordion(true)
+})
 
 function handleChangeTarget(file) {
   targetEditFile.value = file
@@ -514,7 +715,11 @@ function handleModeChange(mode) {
 function handleSeriesChange(newSeries) {
   series.value = newSeries
   uploadStore.setTarget(newSeries, '', '')
-  // AI 模式下不需要加载分类树
+  selectedL1.value = ''
+
+  if (uploadStore.uploadMode === 'manual') {
+    loadRootCategories()
+  }
 }
 
 // 应用所有 AI 推荐
@@ -625,43 +830,40 @@ async function createCategory(form) {
   creating.value = true
   try {
     const { owner, repo, branch } = configStore.config
-    let path = `wallpaper/${series.value}`
+    let categoryPath = `wallpaper/${series.value}`
 
     // 根据是否有父分类决定创建一级还是二级
     if (form.level === 'l2' && selectedL1.value) {
-      path += `/${selectedL1.value}`
+      categoryPath += `/${selectedL1.value}`
     }
-    path += `/${form.name}/.gitkeep`
+    categoryPath += `/${form.name}`
+    const gitkeepPath = `${categoryPath}/.gitkeep`
 
-    await githubService.createFile(owner, repo, path, '', `Create category: ${form.name}`, branch)
-    ElMessage.success('分类创建成功')
-    showModal.value = false
-
-    console.log('[createCategory] Clearing cache and refreshing...')
-
-    // 清除缓存
-    categoryCache.clear()
-
-    // 先显示 loading 状态，让用户感知到正在刷新
-    loading.value = true
-
-    // 等待 GitHub API 同步
-    await new Promise(resolve => setTimeout(resolve, 1200))
-
-    // 重新加载分类列表
-    console.log('[createCategory] Calling loadRootCategories...')
-    await loadRootCategories()
-    console.log(
-      '[createCategory] Done, treeData:',
-      treeData.value.map(c => c.name)
+    await githubService.createFile(
+      owner,
+      repo,
+      gitkeepPath,
+      '',
+      `Create category: ${form.name}`,
+      branch
     )
 
-    // 强制刷新树组件（数据加载完成后再刷新，确保新数据被渲染）
+    clearCategoryCaches()
+    forceCategoryFetch.value = true
+    syncingCategories.value = true
+    loading.value = true
+
+    const synced = await waitForDirectorySync(categoryPath, { shouldExist: true })
+
+    await loadRootCategories(true)
     treeKey.value++
-    console.log('[createCategory] treeKey incremented to:', treeKey.value)
+
+    ElMessage.success(synced ? '分类创建成功' : '分类已创建，目录正在同步')
+    showModal.value = false
   } catch (e) {
     ElMessage.error(e.message || '创建失败')
   } finally {
+    syncingCategories.value = false
     creating.value = false
   }
 }
@@ -716,19 +918,15 @@ async function confirmDeleteCategory() {
 
     // 关闭弹窗
     showDeleteModal.value = false
-    ElMessage.success('分类删除成功')
 
-    // 清除缓存并刷新
-    categoryCache.clear()
+    clearCategoryCaches()
+    forceCategoryFetch.value = true
+    syncingCategories.value = true
     loading.value = true
 
-    // 等待 GitHub API 同步
-    await new Promise(resolve => setTimeout(resolve, 1200))
+    const synced = await waitForDirectorySync(data.path, { shouldExist: false })
 
-    // 加载数据
-    await loadRootCategories()
-
-    // 强制刷新树组件
+    await loadRootCategories(true)
     treeKey.value++
 
     // 如果删除的是当前选中的分类，清空选择
@@ -736,10 +934,13 @@ async function confirmDeleteCategory() {
       uploadStore.setTarget(series.value, '', '')
       selectedL1.value = ''
     }
+
+    ElMessage.success(synced ? '分类删除成功' : '分类已删除，目录正在同步')
   } catch (e) {
     console.error('Delete category error:', e)
     ElMessage.error(e.message || '删除失败')
   } finally {
+    syncingCategories.value = false
     deleting.value = false
   }
 }
@@ -828,6 +1029,9 @@ onMounted(async () => {
     // 2. 加载数据（并行执行）
     await Promise.all([loadRootCategories(), refreshStats()])
 
+    await syncSidebarAccordion(false)
+    window.addEventListener('resize', handleSidebarResize)
+
     console.log('[UploadView] 数据加载完成')
   } catch (err) {
     console.error('加载失败:', err)
@@ -845,7 +1049,10 @@ onUnmounted(() => {
   uploadStore.cleanup()
 
   // 清理分类缓存
-  categoryCache.clear()
+  clearCategoryCaches()
+
+  window.removeEventListener('resize', handleSidebarResize)
+  gsap.killTweensOf([previewPanelRef.value, workflowPanelRef.value])
 })
 
 watch(series, () => {
@@ -926,37 +1133,42 @@ watch(
   }
 
   &__header {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: $spacing-6;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: $spacing-4;
     flex-shrink: 0;
-    // 移除初始隐藏状态，让元素默认可见
-  }
-
-  &__stats-bar {
-    justify-self: center;
   }
 
   &__title-area {
     display: flex;
+    flex-direction: column;
+    gap: $spacing-2;
+    min-width: 0;
+  }
+
+  &__title-main {
+    display: flex;
     align-items: center;
-    gap: $spacing-4;
+    gap: $spacing-3;
+    flex-wrap: wrap;
   }
 
   &__title-badge {
-    padding: $spacing-2 $spacing-4;
-    background: $glass-bg;
-    backdrop-filter: blur($glass-blur);
-    border: 1px solid $glass-border;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: $spacing-1 $spacing-3;
+    background: rgba($primary-start, 0.12);
+    border: 1px solid rgba($primary-start, 0.22);
     border-radius: $radius-full;
-    font-size: $font-size-sm;
-    color: $gray-300;
+    font-size: $font-size-xs;
+    color: $white;
   }
 
   &__title {
     margin: 0;
-    font-size: $font-size-2xl;
+    font-size: 30px;
     font-weight: 700;
     background: $primary-gradient;
     -webkit-background-clip: text;
@@ -964,27 +1176,63 @@ watch(
     background-clip: text;
   }
 
+  &__subtitle {
+    margin: 0;
+    color: $gray-400;
+    font-size: $font-size-sm;
+    line-height: 1.5;
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: $spacing-2;
+    max-width: 520px;
+  }
+
+  &__meta-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: $spacing-2 $spacing-3;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: $radius-full;
+    color: $gray-300;
+    font-size: $font-size-sm;
+    line-height: 1.4;
+
+    &--highlight {
+      color: $white;
+      background: rgba($primary-start, 0.18);
+      border-color: rgba($primary-start, 0.3);
+    }
+  }
+
+  &__categories {
+    min-width: 0;
+  }
+
   &__content {
     flex: 1;
     display: grid;
-    grid-template-columns: 320px 1fr 360px;
+    grid-template-columns: minmax(248px, 286px) minmax(0, 1.68fr) minmax(320px, 380px);
     gap: $spacing-5;
     min-height: 0;
     overflow: hidden;
 
-    // 确保子元素撑满且高度固定
     > * {
       min-height: 0;
       height: 100%;
       overflow: hidden;
-      // 移除初始隐藏状态，让元素默认可见
     }
   }
 
-  &__center {
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-3;
+  &__center,
+  &__preview,
+  &__workflow,
+  &__sidebar {
     min-height: 0;
     overflow: hidden;
   }
@@ -993,32 +1241,267 @@ watch(
     display: flex;
     flex-direction: column;
     gap: $spacing-4;
-    min-height: 0;
+  }
+
+  &__accordion-panel {
     overflow: hidden;
+    min-height: 0;
+  }
+
+  &__overview {
+    padding: $spacing-4;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045));
+    backdrop-filter: blur($glass-blur);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: $radius-xl;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+    flex-shrink: 0;
+  }
+
+  &__overview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $spacing-3;
+    margin-bottom: $spacing-3;
+  }
+
+  &__overview-label {
+    margin: 0 0 $spacing-1;
+    font-size: 11px;
+    color: $gray-500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  &__overview-title {
+    margin: 0;
+    font-size: $font-size-base;
+    color: $white;
+  }
+
+  &__overview-actions {
+    display: flex;
+    gap: $spacing-2;
+  }
+
+  &__overview-btn {
+    min-height: 32px;
+    padding: 0 $spacing-3;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.05));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: $radius-full;
+    color: $gray-300;
+    font-size: $font-size-xs;
+    cursor: pointer;
+    transition: all $duration-normal;
+
+    &:hover {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.07));
+      border-color: rgba($primary-start, 0.3);
+      color: $white;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+    }
+  }
+
+  &__overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $spacing-3;
+  }
+
+  &__overview-item {
+    display: flex;
+    align-items: center;
+    gap: $spacing-3;
+    padding: $spacing-3;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.045));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: $radius-lg;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: rgba($primary-start, 0.12);
+      border: 1px solid rgba($primary-start, 0.16);
+      border-radius: 12px;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    &-label {
+      display: block;
+      margin-bottom: 2px;
+      font-size: $font-size-xs;
+      color: $gray-500;
+    }
+
+    &-value {
+      display: block;
+      color: $white;
+      font-size: $font-size-base;
+      font-weight: 700;
+    }
+
+    &--api {
+      background: linear-gradient(180deg, rgba($primary-start, 0.12), rgba($primary-start, 0.06));
+      border-color: rgba($primary-start, 0.22);
+    }
+  }
+
+  &__quota {
+    margin-top: $spacing-3;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-2;
+  }
+
+  &__quota-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: $radius-full;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  &__quota-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #34d399 0%, $primary-start 100%);
+  }
+
+  &__quota-text {
+    font-size: $font-size-xs;
+    color: $gray-400;
   }
 
   &__preview {
-    flex: 1;
     min-height: 0;
+    height: 100%;
   }
 
   &__workflow {
-    flex: 1.8;
     min-height: 0;
-    overflow: hidden;
+    height: 100%;
   }
 }
 
 // 响应式
-@media (max-width: 1400px) {
+@media (max-width: 1500px) {
   .upload-view__content {
-    grid-template-columns: 280px 1fr 320px;
+    grid-template-columns: minmax(236px, 272px) minmax(0, 1.62fr) minmax(300px, 350px);
   }
 }
 
-@media (max-width: 1200px) {
-  .upload-view__content {
-    grid-template-columns: 260px 1fr 280px;
+@media (max-width: 1400px) {
+  .upload-view {
+    padding: $spacing-5;
+
+    &__header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    &__meta {
+      justify-content: flex-start;
+      max-width: none;
+    }
+
+    &__content {
+      grid-template-columns: minmax(232px, 264px) minmax(0, 1fr) minmax(300px, 340px);
+    }
+  }
+}
+
+@media (max-width: 1180px) {
+  .upload-view {
+    overflow: auto;
+
+    &__content {
+      grid-template-columns: minmax(228px, 264px) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: visible;
+    }
+
+    &__sidebar {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+    }
+
+    &__overview,
+    &__preview,
+    &__workflow {
+      min-height: 0;
+    }
+  }
+}
+
+@media (max-width: 900px) {
+  .upload-view {
+    padding: $spacing-4;
+    gap: $spacing-4;
+
+    &__content {
+      grid-template-columns: 1fr;
+      grid-template-rows: 260px minmax(520px, 1fr) auto;
+    }
+
+    &__title {
+      font-size: 28px;
+    }
+
+    &__sidebar {
+      display: flex;
+      flex-direction: column;
+    }
+
+    &__overview-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .upload-view {
+    &__title {
+      font-size: $font-size-2xl;
+    }
+
+    &__subtitle {
+      font-size: $font-size-xs;
+    }
+
+    &__meta {
+      gap: $spacing-2;
+    }
+
+    &__meta-chip {
+      width: 100%;
+      border-radius: $radius-lg;
+    }
+
+    &__overview-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    &__overview-actions {
+      width: 100%;
+    }
+
+    &__overview-btn {
+      flex: 1;
+    }
+
+    &__overview-grid {
+      grid-template-columns: 1fr;
+    }
   }
 }
 </style>

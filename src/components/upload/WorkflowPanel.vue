@@ -1,234 +1,236 @@
 <template>
-  <GlassCard class="workflow-panel" :hoverable="false">
+  <GlassCard
+    class="workflow-panel"
+    :class="{ 'workflow-panel--collapsed': collapsed }"
+    :padding="collapsed ? '12px 16px' : '24px'"
+    :hoverable="false"
+  >
     <div class="workflow-panel__header">
       <span class="workflow-panel__title">
         <el-icon><Operation /></el-icon>
         发布工作流
       </span>
-      <button class="workflow-panel__refresh" :disabled="loading" @click="refresh">
-        <el-icon :class="{ 'is-loading': loading }"><Refresh /></el-icon>
-      </button>
+      <div class="workflow-panel__header-actions">
+        <button
+          v-if="!collapsed"
+          class="workflow-panel__refresh"
+          :disabled="loading"
+          @click="refresh"
+        >
+          <el-icon :class="{ 'is-loading': loading }"><Refresh /></el-icon>
+        </button>
+        <button
+          v-if="collapsed"
+          class="workflow-panel__collapse"
+          aria-label="展开工作流"
+          @click="$emit('toggle')"
+        >
+          <span class="workflow-panel__collapse-icon">▾</span>
+        </button>
+      </div>
     </div>
 
-    <!-- 可滚动区域 -->
-    <div class="workflow-panel__body">
-      <div class="workflow-panel__content">
-        <!-- 本次会话上传统计 -->
-        <div v-if="workflowStore.sessionUploadCount > 0" class="workflow-panel__stat">
-          <span class="workflow-panel__stat-label">本次上传</span>
-          <span class="workflow-panel__stat-value workflow-panel__stat-value--success">
-            {{ workflowStore.sessionUploadCount }} 张
-          </span>
-        </div>
-
-        <!-- 最新版本 -->
-        <div class="workflow-panel__stat">
-          <span class="workflow-panel__stat-label">最新版本</span>
-          <span class="workflow-panel__stat-value">
-            <template v-if="pendingInfo.latestTag">
-              {{ pendingInfo.latestTag }}
-            </template>
-            <template v-else>
-              <span class="workflow-panel__stat-value--muted">无</span>
-            </template>
-          </span>
-        </div>
-
-        <!-- 上次发布时间 -->
-        <div v-if="pendingInfo.latestTagInfo?.date" class="workflow-panel__stat">
-          <span class="workflow-panel__stat-label">发布时间</span>
-          <span class="workflow-panel__stat-value workflow-panel__stat-value--muted">
-            {{ formatDate(pendingInfo.latestTagInfo.date) }}
-          </span>
-        </div>
-
-        <!-- 待处理图片 -->
-        <div class="workflow-panel__stat">
-          <span class="workflow-panel__stat-label">待处理</span>
-          <span
-            class="workflow-panel__stat-value"
-            :class="{ 'workflow-panel__stat-value--warning': pendingInfo.pendingCount > 0 }"
-          >
-            {{ pendingInfo.pendingCount }} 张
-          </span>
-        </div>
-
-        <!-- 工作流状态 -->
-        <div v-if="workflowStatus.latestRun && !isRunning" class="workflow-panel__stat">
-          <span class="workflow-panel__stat-label">上次运行</span>
-          <span class="workflow-panel__stat-value">
-            <el-tag
-              :type="getRunStatusType(workflowStatus.latestRun)"
-              size="small"
-              class="workflow-panel__run-tag"
-              @click="openWorkflowRun"
-            >
-              {{ getRunStatusText(workflowStatus.latestRun) }}
-            </el-tag>
-          </span>
-        </div>
-
-        <!-- 工作流失败详情 -->
-        <div
-          v-if="workflowStatus.latestRun?.conclusion === 'failure' && !isRunning"
-          class="workflow-panel__failure"
-        >
-          <el-icon><CircleClose /></el-icon>
-          <span>工作流执行失败</span>
-          <a :href="getWorkflowRunUrl()" target="_blank" class="workflow-panel__failure-link">
-            查看详情
-          </a>
-        </div>
-
-        <!-- 运行中状态（详细显示） -->
-        <div v-if="isRunning" class="workflow-panel__progress">
-          <div class="workflow-panel__progress-header">
-            <el-icon class="is-loading"><Loading /></el-icon>
-            <span>{{ getProgressTitle() }}</span>
+    <div class="workflow-panel__inner" :class="{ 'workflow-panel__inner--hidden': collapsed }">
+      <div class="workflow-panel__body">
+        <div class="workflow-panel__content">
+          <div v-if="workflowStore.sessionUploadCount > 0" class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">本次上传</span>
+            <span class="workflow-panel__stat-value workflow-panel__stat-value--success">
+              {{ workflowStore.sessionUploadCount }} 张
+            </span>
           </div>
 
-          <!-- 进度步骤 -->
-          <div class="workflow-panel__steps">
-            <div
-              v-for="(step, index) in progressSteps"
-              :key="step.key"
-              class="workflow-panel__step"
-              :class="{
-                'workflow-panel__step--active': step.status === 'active',
-                'workflow-panel__step--done': step.status === 'done',
-                'workflow-panel__step--pending': step.status === 'pending'
-              }"
+          <div class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">最新版本</span>
+            <span class="workflow-panel__stat-value">
+              <template v-if="pendingInfo.latestTag">
+                {{ pendingInfo.latestTag }}
+              </template>
+              <template v-else>
+                <span class="workflow-panel__stat-value--muted">无</span>
+              </template>
+            </span>
+          </div>
+
+          <div v-if="pendingInfo.latestTagInfo?.date" class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">发布时间</span>
+            <span class="workflow-panel__stat-value workflow-panel__stat-value--muted">
+              {{ formatDate(pendingInfo.latestTagInfo.date) }}
+            </span>
+          </div>
+
+          <div class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">待处理</span>
+            <span
+              class="workflow-panel__stat-value"
+              :class="{ 'workflow-panel__stat-value--warning': pendingInfo.pendingCount > 0 }"
             >
-              <div class="workflow-panel__step-indicator">
-                <el-icon v-if="step.status === 'active'" class="is-loading"><Loading /></el-icon>
-                <el-icon v-else-if="step.status === 'done'"><CircleCheck /></el-icon>
-                <span v-else>{{ index + 1 }}</span>
+              {{ pendingInfo.pendingCount }} 张
+            </span>
+          </div>
+
+          <div v-if="workflowStatus.latestRun && !isRunning" class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">上次运行</span>
+            <span class="workflow-panel__stat-value">
+              <el-tag
+                :type="getRunStatusType(workflowStatus.latestRun)"
+                size="small"
+                class="workflow-panel__run-tag"
+                @click="openWorkflowRun"
+              >
+                {{ getRunStatusText(workflowStatus.latestRun) }}
+              </el-tag>
+            </span>
+          </div>
+
+          <div
+            v-if="workflowStatus.latestRun?.conclusion === 'failure' && !isRunning"
+            class="workflow-panel__failure"
+          >
+            <el-icon><CircleClose /></el-icon>
+            <span>工作流执行失败</span>
+            <a :href="getWorkflowRunUrl()" target="_blank" class="workflow-panel__failure-link">
+              查看详情
+            </a>
+          </div>
+
+          <div v-if="isRunning" class="workflow-panel__progress">
+            <div class="workflow-panel__progress-header">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>{{ getProgressTitle() }}</span>
+            </div>
+
+            <div class="workflow-panel__steps">
+              <div
+                v-for="(step, index) in progressSteps"
+                :key="step.key"
+                class="workflow-panel__step"
+                :class="{
+                  'workflow-panel__step--active': step.status === 'active',
+                  'workflow-panel__step--done': step.status === 'done',
+                  'workflow-panel__step--pending': step.status === 'pending'
+                }"
+              >
+                <div class="workflow-panel__step-indicator">
+                  <el-icon v-if="step.status === 'active'" class="is-loading"><Loading /></el-icon>
+                  <el-icon v-else-if="step.status === 'done'"><CircleCheck /></el-icon>
+                  <span v-else>{{ index + 1 }}</span>
+                </div>
+                <span class="workflow-panel__step-text">{{ step.label }}</span>
               </div>
-              <span class="workflow-panel__step-text">{{ step.label }}</span>
+            </div>
+
+            <a
+              v-if="getWorkflowRunUrl()"
+              :href="getWorkflowRunUrl()"
+              target="_blank"
+              class="workflow-panel__progress-link"
+            >
+              <el-icon><Link /></el-icon>
+              查看 GitHub Actions
+            </a>
+          </div>
+
+          <div v-if="pendingInfo.message" class="workflow-panel__message">
+            <el-icon><InfoFilled /></el-icon>
+            {{ pendingInfo.message }}
+          </div>
+
+          <div v-if="pendingInfo.error" class="workflow-panel__error">
+            <el-icon><WarningFilled /></el-icon>
+            {{ pendingInfo.error }}
+          </div>
+        </div>
+
+        <Transition name="slide">
+          <div
+            v-if="showFiles && pendingInfo.pendingFiles.length > 0"
+            class="workflow-panel__files"
+          >
+            <div class="workflow-panel__files-header">
+              待处理文件 ({{ pendingInfo.pendingFiles.length }})
+            </div>
+            <div class="workflow-panel__files-list">
+              <div
+                v-for="file in pendingInfo.pendingFiles"
+                :key="file.filename"
+                class="workflow-panel__file"
+              >
+                <el-tag :type="getSeriesType(file.series)" size="small">
+                  {{ file.series }}
+                </el-tag>
+                <span class="workflow-panel__file-name">
+                  {{ file.filename.split('/').pop() }}
+                </span>
+              </div>
             </div>
           </div>
+        </Transition>
 
-          <!-- 查看详情链接 -->
-          <a
-            v-if="getWorkflowRunUrl()"
-            :href="getWorkflowRunUrl()"
-            target="_blank"
-            class="workflow-panel__progress-link"
-          >
-            <el-icon><Link /></el-icon>
-            查看 GitHub Actions
-          </a>
-        </div>
-
-        <!-- 提示信息 -->
-        <div v-if="pendingInfo.message" class="workflow-panel__message">
-          <el-icon><InfoFilled /></el-icon>
-          {{ pendingInfo.message }}
-        </div>
-
-        <div v-if="showDeployHint" class="workflow-panel__deploy-hint">
-          <el-icon><InfoFilled /></el-icon>
-          <span
-            >数据已生成。若要让
-            <code>wallpaper-gallery</code> 线上立即生效，请手动点击下方“重新部署前端”。</span
-          >
-        </div>
-
-        <!-- 错误信息 -->
-        <div v-if="pendingInfo.error" class="workflow-panel__error">
-          <el-icon><WarningFilled /></el-icon>
-          {{ pendingInfo.error }}
-        </div>
+        <button
+          v-if="pendingInfo.pendingFiles.length > 0"
+          class="workflow-panel__toggle"
+          @click="showFiles = !showFiles"
+        >
+          <el-icon>
+            <ArrowUp v-if="showFiles" />
+            <ArrowDown v-else />
+          </el-icon>
+          {{ showFiles ? '收起' : '查看详情' }}
+        </button>
       </div>
 
-      <!-- 待处理文件列表（可展开） -->
-      <Transition name="slide">
-        <div v-if="showFiles && pendingInfo.pendingFiles.length > 0" class="workflow-panel__files">
-          <div class="workflow-panel__files-header">
-            待处理文件 ({{ pendingInfo.pendingFiles.length }})
-          </div>
-          <div class="workflow-panel__files-list">
-            <div
-              v-for="file in pendingInfo.pendingFiles"
-              :key="file.filename"
-              class="workflow-panel__file"
-            >
-              <el-tag :type="getSeriesType(file.series)" size="small">
-                {{ file.series }}
-              </el-tag>
-              <span class="workflow-panel__file-name">
-                {{ file.filename.split('/').pop() }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </Transition>
+      <div class="workflow-panel__actions">
+        <button
+          class="workflow-panel__btn"
+          :class="{
+            'workflow-panel__btn--disabled':
+              !workflowStore.canTrigger &&
+              !workflowStatus.hasRunning &&
+              !workflowStatus.justTriggered,
+            'workflow-panel__btn--running':
+              workflowStatus.hasRunning || workflowStatus.justTriggered
+          }"
+          :disabled="!workflowStore.canTrigger || triggering"
+          @click="handleTrigger"
+        >
+          <el-icon v-if="triggering" class="is-loading"><Loading /></el-icon>
+          <el-icon
+            v-else-if="workflowStatus.justTriggered || workflowStatus.hasRunning"
+            class="is-loading"
+          >
+            <Loading />
+          </el-icon>
+          <el-icon v-else><VideoPlay /></el-icon>
+          <span v-if="triggering">触发中...</span>
+          <span v-else-if="workflowStatus.justTriggered">已触发，等待启动...</span>
+          <span v-else-if="workflowStatus.hasRunning">运行中...</span>
+          <span v-else-if="pendingInfo.pendingCount === 0">无待处理</span>
+          <span v-else>触发工作流</span>
+        </button>
 
-      <!-- 展开/收起按钮 -->
-      <button
-        v-if="pendingInfo.pendingFiles.length > 0"
-        class="workflow-panel__toggle"
-        @click="showFiles = !showFiles"
-      >
-        <el-icon>
-          <ArrowUp v-if="showFiles" />
-          <ArrowDown v-else />
-        </el-icon>
-        {{ showFiles ? '收起' : '查看详情' }}
-      </button>
-    </div>
+        <button
+          v-if="isAdmin && pendingInfo.latestTag"
+          class="workflow-panel__rollback-btn"
+          :disabled="rolling || loading || isRunning"
+          @click="handleRollback"
+        >
+          <el-icon v-if="rolling" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else><RefreshLeft /></el-icon>
+          <span>撤销 {{ pendingInfo.latestTag }}</span>
+        </button>
 
-    <!-- 操作按钮（固定在底部） -->
-    <div class="workflow-panel__actions">
-      <button
-        class="workflow-panel__btn"
-        :class="{
-          'workflow-panel__btn--disabled':
-            !workflowStore.canTrigger &&
-            !workflowStatus.hasRunning &&
-            !workflowStatus.justTriggered,
-          'workflow-panel__btn--running': workflowStatus.hasRunning || workflowStatus.justTriggered
-        }"
-        :disabled="!workflowStore.canTrigger || triggering"
-        @click="handleTrigger"
-      >
-        <el-icon v-if="triggering" class="is-loading"><Loading /></el-icon>
-        <el-icon
-          v-else-if="workflowStatus.justTriggered || workflowStatus.hasRunning"
-          class="is-loading"
-          ><Loading
-        /></el-icon>
-        <el-icon v-else><VideoPlay /></el-icon>
-        <span v-if="triggering">触发中...</span>
-        <span v-else-if="workflowStatus.justTriggered">已触发，等待启动...</span>
-        <span v-else-if="workflowStatus.hasRunning">运行中...</span>
-        <span v-else-if="pendingInfo.pendingCount === 0">无待处理</span>
-        <span v-else>触发工作流</span>
-      </button>
-
-      <!-- 回滚按钮（仅管理员可见） -->
-      <button
-        v-if="isAdmin && pendingInfo.latestTag"
-        class="workflow-panel__rollback-btn"
-        :disabled="rolling || loading || isRunning"
-        @click="handleRollback"
-      >
-        <el-icon v-if="rolling" class="is-loading"><Loading /></el-icon>
-        <el-icon v-else><RefreshLeft /></el-icon>
-        <span>撤销 {{ pendingInfo.latestTag }}</span>
-      </button>
-
-      <!-- 重新部署前端按钮（可写用户可见） -->
-      <button
-        v-if="canUpload"
-        class="workflow-panel__deploy-btn"
-        :disabled="deploying || loading"
-        @click="handleDeployFrontend"
-      >
-        <el-icon v-if="deploying" class="is-loading"><Loading /></el-icon>
-        <el-icon v-else><Upload /></el-icon>
-        <span>{{ deploying ? '部署中...' : '重新部署前端' }}</span>
-      </button>
+        <button
+          v-if="canUpload"
+          class="workflow-panel__deploy-btn"
+          :disabled="deploying || loading"
+          @click="handleDeployFrontend"
+        >
+          <el-icon v-if="deploying" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else><Upload /></el-icon>
+          <span>{{ deploying ? '部署中...' : '重新部署前端' }}</span>
+        </button>
+      </div>
     </div>
   </GlassCard>
 </template>
@@ -256,6 +258,12 @@ import { useWorkflowStore } from '@/stores/workflow'
 import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
 
+defineProps({
+  collapsed: { type: Boolean, default: false }
+})
+
+defineEmits(['toggle'])
+
 const workflowStore = useWorkflowStore()
 const configStore = useConfigStore()
 const authStore = useAuthStore()
@@ -271,20 +279,11 @@ const workflowStatus = computed(() => workflowStore.workflowStatus)
 const isAdmin = computed(() => authStore.permissionLevel === 'admin')
 const canUpload = computed(() => authStore.canUpload)
 const isRunning = computed(() => workflowStore.isRunning)
-const showDeployHint = computed(
-  () =>
-    canUpload.value &&
-    !isRunning.value &&
-    pendingInfo.value.pendingCount === 0 &&
-    workflowStatus.value.latestRun?.conclusion === 'success'
-)
 
-// 进度步骤
 const progressSteps = computed(() => {
   const status = workflowStatus.value
   const run = status.runningWorkflow || status.latestRun
 
-  // 定义步骤
   const steps = [
     { key: 'trigger', label: '触发工作流' },
     { key: 'queue', label: '排队等待' },
@@ -292,71 +291,49 @@ const progressSteps = computed(() => {
     { key: 'release', label: '发布版本' }
   ]
 
-  // 根据状态设置每个步骤的状态
   if (status.justTriggered && !status.hasRunning) {
-    // 刚触发，等待启动
-    return steps.map((step, i) => ({
-      ...step,
-      status: i === 0 ? 'active' : 'pending'
-    }))
+    return steps.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'pending' }))
   }
 
   if (run?.status === 'queued') {
-    // 排队中
-    return steps.map((step, i) => ({
+    return steps.map((step, index) => ({
       ...step,
-      status: i === 0 ? 'done' : i === 1 ? 'active' : 'pending'
+      status: index === 0 ? 'done' : index === 1 ? 'active' : 'pending'
     }))
   }
 
   if (run?.status === 'in_progress') {
-    // 运行中 - 根据运行时间估算进度
     const startTime = run.run_started_at ? new Date(run.run_started_at).getTime() : Date.now()
     const elapsed = Date.now() - startTime
 
-    // 假设：0-30秒处理图片，30秒后发布版本
     if (elapsed < 30000) {
-      return steps.map((step, i) => ({
+      return steps.map((step, index) => ({
         ...step,
-        status: i <= 1 ? 'done' : i === 2 ? 'active' : 'pending'
-      }))
-    } else {
-      return steps.map((step, i) => ({
-        ...step,
-        status: i <= 2 ? 'done' : 'active'
+        status: index <= 1 ? 'done' : index === 2 ? 'active' : 'pending'
       }))
     }
+
+    return steps.map((step, index) => ({
+      ...step,
+      status: index <= 2 ? 'done' : 'active'
+    }))
   }
 
-  // 默认：第一步激活
-  return steps.map((step, i) => ({
-    ...step,
-    status: i === 0 ? 'active' : 'pending'
-  }))
+  return steps.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'pending' }))
 })
 
-// 获取进度标题
 function getProgressTitle() {
   const status = workflowStatus.value
   const run = status.runningWorkflow
 
-  if (status.justTriggered && !status.hasRunning) {
-    return '已触发，等待启动...'
-  }
-  if (run?.status === 'queued') {
-    return '排队中，请稍候...'
-  }
-  if (run?.status === 'in_progress') {
-    return '正在处理...'
-  }
+  if (status.justTriggered && !status.hasRunning) return '已触发，等待启动...'
+  if (run?.status === 'queued') return '排队中，请稍候...'
+  if (run?.status === 'in_progress') return '正在处理...'
   return '工作流运行中...'
 }
 
-// 工作流仓库配置
 const WORKFLOW_OWNER = 'IT-NuanxinPro'
 const WORKFLOW_REPO = 'wallpaper-gallery-workflow'
-
-// 前端仓库配置
 const FRONTEND_OWNER = 'IT-NuanxinPro'
 const FRONTEND_REPO = 'wallpaper-gallery'
 
@@ -378,13 +355,10 @@ async function handleTrigger() {
     const publisher = authStore.user?.login || ''
     await workflowStore.triggerWorkflow(WORKFLOW_OWNER, WORKFLOW_REPO, '', publisher)
     ElMessage.success('工作流已触发，正在处理中...')
-
-    // 触发后刷新状态
     setTimeout(() => {
       workflowStore.refreshWorkflowStatus(WORKFLOW_OWNER, WORKFLOW_REPO)
     }, 2000)
   } catch (error) {
-    // 如果是权限问题，提供手动触发的链接
     if (error.type === 'WORKFLOW_PERMISSION_DENIED') {
       ElMessageBox.confirm(
         '您没有工作流仓库的触发权限。\n\n您可以手动前往 GitHub Actions 页面触发工作流。',
@@ -457,10 +431,7 @@ async function handleDeployFrontend() {
     )
 
     deploying.value = true
-
-    // 使用 workflow_dispatch 触发前端部署
     await workflowStore.triggerFrontendDeploy(FRONTEND_OWNER, FRONTEND_REPO)
-
     ElMessage.success('前端部署已触发，请稍后查看 GitHub Actions 状态')
   } catch (error) {
     if (error !== 'cancel') {
@@ -516,30 +487,24 @@ function formatDate(dateStr) {
   const now = new Date()
   const diff = now - date
 
-  // 小于 1 小时
   if (diff < 3600000) {
     const mins = Math.floor(diff / 60000)
     return mins <= 1 ? '刚刚' : `${mins} 分钟前`
   }
-  // 小于 24 小时
   if (diff < 86400000) {
     const hours = Math.floor(diff / 3600000)
     return `${hours} 小时前`
   }
-  // 小于 7 天
   if (diff < 604800000) {
     const days = Math.floor(diff / 86400000)
     return `${days} 天前`
   }
-  // 超过 7 天显示日期
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
 onMounted(() => {
-  // 设置图床仓库配置，用于工作流完成后自动刷新数据
   const { owner, repo, branch } = configStore.config
   workflowStore.setImageRepoConfig(owner, repo, branch)
-
   refresh()
 })
 
@@ -563,6 +528,13 @@ onUnmounted(() => {
     justify-content: space-between;
     flex-shrink: 0;
     margin-bottom: $spacing-3;
+    min-height: 28px;
+  }
+
+  &__header-actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-2;
   }
 
   &__title {
@@ -572,6 +544,7 @@ onUnmounted(() => {
     font-size: $font-size-sm;
     font-weight: 600;
     color: $white;
+    line-height: 1;
 
     .el-icon {
       color: $primary-start;
@@ -599,6 +572,47 @@ onUnmounted(() => {
     &:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+    }
+  }
+
+  &__collapse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    color: $gray-400;
+    font-size: $font-size-xs;
+    cursor: pointer;
+    transition: all $duration-normal;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: $white;
+    }
+  }
+
+  &__collapse-icon {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  &__inner {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+    transition: opacity 0.34s ease;
+
+    &--hidden {
+      opacity: 0;
+      pointer-events: none;
     }
   }
 
@@ -655,21 +669,6 @@ onUnmounted(() => {
       &--muted {
         color: $gray-500;
       }
-    }
-  }
-
-  &__running {
-    display: flex;
-    align-items: center;
-    gap: $spacing-2;
-    padding: $spacing-2 $spacing-3;
-    background: rgba($primary-start, 0.1);
-    border-radius: $radius-md;
-    font-size: $font-size-xs;
-    color: $primary-start;
-
-    .el-icon {
-      font-size: 14px;
     }
   }
 
@@ -787,122 +786,62 @@ onUnmounted(() => {
     }
   }
 
-  &__message {
-    display: flex;
-    align-items: flex-start;
-    gap: $spacing-2;
-    padding: $spacing-2;
-    background: rgba($info, 0.1);
-    border-radius: $radius-md;
-    font-size: $font-size-xs;
-    color: $info;
-
-    .el-icon {
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-  }
-
+  &__message,
   &__error {
     display: flex;
     align-items: flex-start;
     gap: $spacing-2;
     padding: $spacing-2;
-    background: rgba($danger, 0.1);
     border-radius: $radius-md;
     font-size: $font-size-xs;
+
+    .el-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+  }
+
+  &__message {
+    background: rgba($info, 0.1);
+    color: $info;
+  }
+
+  &__error {
+    background: rgba($danger, 0.1);
     color: $danger;
-
-    .el-icon {
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-  }
-
-  &__deploy-hint {
-    display: flex;
-    align-items: flex-start;
-    gap: $spacing-2;
-    padding: $spacing-3;
-    border-radius: $radius-lg;
-    background: rgba(59, 130, 246, 0.12);
-    border: 1px solid rgba(96, 165, 250, 0.22);
-    color: rgba(219, 234, 254, 0.96);
-    font-size: $font-size-xs;
-    line-height: 1.65;
-
-    :deep(code) {
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: rgba(15, 23, 42, 0.28);
-      color: inherit;
-      font-size: inherit;
-    }
-
-    .el-icon {
-      margin-top: 2px;
-      flex-shrink: 0;
-    }
-  }
-
-  &__run-tag {
-    cursor: pointer;
-
-    &:hover {
-      filter: brightness(1.1);
-    }
   }
 
   &__failure {
     display: flex;
     align-items: center;
     gap: $spacing-2;
-    padding: $spacing-2 $spacing-3;
-    background: rgba($danger, 0.1);
-    border: 1px solid rgba($danger, 0.2);
+    padding: $spacing-2;
+    background: rgba($danger, 0.08);
+    border: 1px solid rgba($danger, 0.18);
     border-radius: $radius-md;
     font-size: $font-size-xs;
     color: $danger;
 
-    .el-icon {
-      font-size: 14px;
-    }
-
     &-link {
       margin-left: auto;
-      color: $danger;
-      text-decoration: underline;
-      opacity: 0.8;
-
-      &:hover {
-        opacity: 1;
-      }
+      color: inherit;
     }
   }
 
   &__files {
     margin-top: $spacing-3;
-    padding: $spacing-3;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: $radius-md;
+    padding-top: $spacing-3;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 
     &-header {
       font-size: $font-size-xs;
-      color: $gray-400;
+      color: $gray-500;
       margin-bottom: $spacing-2;
     }
 
     &-list {
-      display: flex;
-      flex-direction: column;
-      gap: $spacing-1;
-    }
-
-    &-more {
-      font-size: $font-size-xs;
-      color: $gray-500;
-      text-align: center;
-      padding: $spacing-2;
+      max-height: 120px;
+      overflow-y: auto;
     }
   }
 
@@ -986,34 +925,7 @@ onUnmounted(() => {
     }
   }
 
-  &__rollback-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: $spacing-2;
-    padding: $spacing-2;
-    margin-top: $spacing-2;
-    background: transparent;
-    border: 1px solid rgba($danger, 0.3);
-    border-radius: $radius-md;
-    color: $gray-400;
-    font-size: $font-size-xs;
-    cursor: pointer;
-    transition: all $duration-normal;
-
-    &:hover:not(:disabled) {
-      background: rgba($danger, 0.1);
-      border-color: $danger;
-      color: $danger;
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
+  &__rollback-btn,
   &__deploy-btn {
     width: 100%;
     display: flex;
@@ -1023,22 +935,41 @@ onUnmounted(() => {
     padding: $spacing-2;
     margin-top: $spacing-2;
     background: transparent;
-    border: 1px solid rgba($info, 0.3);
     border-radius: $radius-md;
     color: $gray-400;
     font-size: $font-size-xs;
     cursor: pointer;
     transition: all $duration-normal;
 
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__rollback-btn {
+    border: 1px solid rgba($danger, 0.3);
+
+    &:hover:not(:disabled) {
+      background: rgba($danger, 0.1);
+      border-color: $danger;
+      color: $danger;
+    }
+  }
+
+  &__deploy-btn {
+    border: 1px solid rgba($info, 0.3);
+
     &:hover:not(:disabled) {
       background: rgba($info, 0.1);
       border-color: $info;
       color: $info;
     }
+  }
 
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+  &--collapsed {
+    .workflow-panel__header {
+      margin-bottom: 0;
     }
   }
 }

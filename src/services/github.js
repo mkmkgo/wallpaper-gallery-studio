@@ -70,6 +70,7 @@ class GitHubService {
 
     try {
       const response = await fetch(url, {
+        cache: 'no-store',
         ...options,
         headers: {
           ...this.getHeaders(),
@@ -244,9 +245,19 @@ class GitHubService {
   /**
    * 获取目录内容
    */
-  async getContents(owner, repo, path = '', branch = 'main') {
+  async getContents(owner, repo, path = '', branch = 'main', options = {}) {
     const endpoint = `/repos/${owner}/${repo}/contents/${path}`
-    const params = branch ? `?ref=${branch}` : ''
+    const searchParams = new URLSearchParams()
+
+    if (branch) {
+      searchParams.set('ref', branch)
+    }
+
+    if (options.forceRefresh) {
+      searchParams.set('_', `${Date.now()}`)
+    }
+
+    const params = searchParams.toString() ? `?${searchParams.toString()}` : ''
     return this.request(endpoint + params)
   }
 
@@ -293,10 +304,13 @@ class GitHubService {
       body.sha = sha
     }
 
-    return this.request(endpoint, {
+    const result = await this.request(endpoint, {
       method: 'PUT',
       body: JSON.stringify(body)
     })
+
+    this.clearDirectoryCache()
+    return result
   }
 
   /**
@@ -405,7 +419,7 @@ class GitHubService {
   async deleteFile(owner, repo, path, sha, message, branch = 'main') {
     const endpoint = `/repos/${owner}/${repo}/contents/${path}`
 
-    return this.request(endpoint, {
+    const result = await this.request(endpoint, {
       method: 'DELETE',
       body: JSON.stringify({
         message,
@@ -413,6 +427,9 @@ class GitHubService {
         branch
       })
     })
+
+    this.clearDirectoryCache()
+    return result
   }
 
   // ============ Workflow ============

@@ -1,29 +1,39 @@
 <template>
-  <div class="image-preview">
+  <div class="image-preview" :class="{ 'image-preview--collapsed': collapsed }">
     <!-- 预览区域 -->
     <div class="image-preview__section">
       <div class="image-preview__header">
         <h3>📷 预览</h3>
+        <button
+          v-if="collapsed"
+          class="image-preview__toggle"
+          :aria-label="collapsed ? '展开预览' : '收起预览'"
+          @click="$emit('toggle')"
+        >
+          <span class="image-preview__toggle-icon">{{ collapsed ? '▾' : '▴' }}</span>
+        </button>
       </div>
-      <div class="image-preview__main">
-        <Transition name="preview" mode="out-in">
-          <div v-if="file" :key="file.id" class="image-preview__content">
-            <div class="image-preview__img-wrapper">
-              <img :src="file.preview" class="image-preview__img" />
-            </div>
-            <div class="image-preview__info">
-              <p class="image-preview__name">{{ file.file.name }}</p>
-              <div class="image-preview__meta">
-                <span>{{ formatSize(file.file.size) }}</span>
-                <span>{{ getFileType(file.file.type) }}</span>
+      <div class="image-preview__body" :class="{ 'image-preview__body--hidden': collapsed }">
+        <div class="image-preview__main">
+          <Transition name="preview" mode="out-in">
+            <div v-if="file" :key="file.id" class="image-preview__content">
+              <div class="image-preview__img-wrapper">
+                <img :src="file.preview" class="image-preview__img" />
+              </div>
+              <div class="image-preview__info">
+                <p class="image-preview__name">{{ file.file.name }}</p>
+                <div class="image-preview__meta">
+                  <span>{{ formatSize(file.file.size) }}</span>
+                  <span>{{ getFileType(file.file.type) }}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div v-else class="image-preview__empty">
-            <span class="image-preview__empty-icon">👆</span>
-            <p>点击左侧图片预览</p>
-          </div>
-        </Transition>
+            <div v-else class="image-preview__empty">
+              <span class="image-preview__empty-icon">👆</span>
+              <p>点击左侧图片预览</p>
+            </div>
+          </Transition>
+        </div>
       </div>
     </div>
   </div>
@@ -31,8 +41,11 @@
 
 <script setup>
 defineProps({
+  collapsed: { type: Boolean, default: false },
   file: { type: Object, default: null }
 })
+
+defineEmits(['toggle'])
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
@@ -69,8 +82,13 @@ function getFileType(type) {
   }
 
   &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-3;
     flex-shrink: 0;
     margin-bottom: $spacing-3;
+
     h3 {
       font-size: $font-size-sm;
       font-weight: 600;
@@ -79,12 +97,53 @@ function getFileType(type) {
     }
   }
 
+  &__toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    color: $gray-400;
+    font-size: $font-size-xs;
+    cursor: pointer;
+    transition: all $duration-normal;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: $white;
+    }
+  }
+
+  &__toggle-icon {
+    font-size: 11px;
+    line-height: 1;
+  }
+
   &__main {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+    transition: opacity 0.34s ease;
+
+    &--hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
   }
 
   &__content {
@@ -154,6 +213,17 @@ function getFileType(type) {
     p {
       margin: 0;
       font-size: $font-size-sm;
+    }
+  }
+
+  &--collapsed {
+    .image-preview__section {
+      padding: 12px $spacing-4;
+    }
+
+    .image-preview__header {
+      margin-bottom: 0;
+      min-height: 28px;
     }
   }
 }

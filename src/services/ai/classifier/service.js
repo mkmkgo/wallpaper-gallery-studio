@@ -4,7 +4,7 @@
  */
 
 import { AIProviderFactory, compressImage, IMAGE_CONFIG } from '../core'
-import { buildPrompt, validatePrompt } from './prompts'
+import { buildPromptWithLatestCategories, validatePrompt } from './prompts'
 import { getModelByKey } from './config'
 import { createGroqRateLimiter } from '@/utils/rateLimiter'
 
@@ -36,7 +36,12 @@ export async function analyzeImage({
       throw new Error('No image provided')
     }
 
-    const prompt = buildPrompt(promptTemplate, series, customPrompt, providerType)
+    const prompt = await buildPromptWithLatestCategories(
+      promptTemplate,
+      series,
+      customPrompt,
+      providerType
+    )
     if (!validatePrompt(prompt)) {
       throw new Error('Invalid prompt')
     }

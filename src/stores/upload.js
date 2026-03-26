@@ -92,11 +92,16 @@ export const useUploadStore = defineStore('upload', () => {
       })
       .sort((a, b) => {
         const providerDiff =
-          (providerPriority[a.provider] || 99) - (providerPriority[b.provider] || 99)
+          (providerPriority[a.provider] ?? 99) - (providerPriority[b.provider] ?? 99)
         if (providerDiff !== 0) return providerDiff
         if (a.recommended !== b.recommended) return Number(b.recommended) - Number(a.recommended)
         return 0
       })
+  }
+
+  function getPreferredUploadModel(credentialsStore = useCredentialsStore()) {
+    const availableModels = getUploadModelList(credentialsStore)
+    return availableModels[0] || getRecommendedModel(AI_PROVIDERS.GROQ)
   }
 
   // 生成唯一 ID
@@ -247,7 +252,10 @@ export const useUploadStore = defineStore('upload', () => {
     let selectedModel = availableModels.find(model => model.key === selectedModelKey.value)
 
     if (!selectedModel) {
-      selectedModel = availableModels[0] || getRecommendedModel(AI_PROVIDERS.GROQ)
+      selectedModel = getPreferredUploadModel(credentialsStore)
+      if (selectedModel?.key) {
+        selectedModelKey.value = selectedModel.key
+      }
     }
 
     const provider = selectedModel?.provider || credentialsStore.defaultProvider
@@ -1150,10 +1158,14 @@ export const useUploadStore = defineStore('upload', () => {
   function getCurrentAiConfig() {
     const credentialsStore = useCredentialsStore()
     const availableModels = getUploadModelList(credentialsStore)
-    const model =
-      availableModels.find(item => item.key === selectedModelKey.value) ||
-      availableModels[0] ||
-      getRecommendedModel(AI_PROVIDERS.GROQ)
+    let model = availableModels.find(item => item.key === selectedModelKey.value)
+
+    if (!model) {
+      model = getPreferredUploadModel(credentialsStore)
+      if (model?.key) {
+        selectedModelKey.value = model.key
+      }
+    }
 
     const provider = model?.provider || credentialsStore.defaultProvider
     const modelKey = model?.key || CLASSIFIER_CONFIG.defaultModel

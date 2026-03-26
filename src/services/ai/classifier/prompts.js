@@ -5,6 +5,7 @@
 
 import { CATEGORIES } from '@/config/categories'
 import { getThirdLevelCategories } from '@/config/subcategories'
+import { getUploadCategoryTree } from '@/services/upload/category-directory'
 
 /**
  * 提示词模板配置
@@ -197,7 +198,7 @@ export const SERIES_TEMPLATES = {
 ### A. 人像分类决策树 (Portrait Logic)
 
 1. **特定明星**：
-   - 如果识别出具体明星（如张凌赫），优先归入对应分类。
+   - 如果识别出具体明星，并且现有目录中已有对应子类，优先归入对应分类。
 
 2. **【魅力】(Glamour)**：
    - **定义**：强调身材曲线、成熟美、吸引力。
@@ -218,7 +219,7 @@ export const SERIES_TEMPLATES = {
 ### B. 动漫与插画决策树 (Anime Logic)
 
 1. **特定 IP**：
-   - 认出具体角色或作品（如初音未来、鬼灭之刃、美少女战士），必须归入对应 IP 子类。
+   - 认出具体角色或作品，且现有目录中已有对应子类时，必须优先归入对应 IP 子类。
 
 2. **【动漫】(Anime)**：
    - **特征**：典型的日式动画风格（赛璐璐涂色、大眼睛、动画感）。
@@ -257,7 +258,7 @@ export const SERIES_TEMPLATES = {
 - **新分类提案 (Proposal)**：
   - 如果图片是**现有库中缺失**的知名IP、明星或特定风格。
   - 请在 \`new_category_proposal\` 中填写建议。
-  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/咒术回战\`。
+  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/[具体作品名]\`。
 
 ### 任务二：文案生成
 
@@ -414,7 +415,7 @@ export const SERIES_TEMPLATES = {
 ### A. 人像分类决策树 (Portrait Logic)
 
 1. **特定明星/古装**：
-   - 如果识别出具体明星（如迪丽热巴）或明确的古装（汉服），优先归入对应分类。
+   - 如果识别出具体明星，或明确属于现有目录中的细分类风格，优先归入对应分类。
 
 2. **【魅力】(Glamour)**：
    - **定义**：强调身材曲线、成熟美、吸引力。
@@ -435,7 +436,7 @@ export const SERIES_TEMPLATES = {
 ### B. 动漫与插画决策树 (Anime Logic)
 
 1. **特定 IP**：
-   - 认出具体角色（如路飞、柯南、美少女战士），必须归入对应 IP 子类。
+   - 认出具体角色，且现有目录中已有对应子类时，必须优先归入对应 IP 子类。
 
 2. **【动漫】(Anime)**：
    - **特征**：典型的日式动画风格（赛璐璐涂色、大眼睛、动画感）。
@@ -454,9 +455,9 @@ export const SERIES_TEMPLATES = {
 
 - **必须**从现有列表中选择 \`secondary\` 和 \`third\`。
 - **新分类提案 (Proposal)**：
-  - 如果图片是**现有库中缺失**的知名IP（如《咒术回战》）、明星或特定风格。
+  - 如果图片是**现有库中缺失**的知名 IP、明星或特定风格。
   - 请在 \`new_category_proposal\` 中填写建议。
-  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/咒术回战\`。
+  - 示例：归类选 \`动漫/二次元\`，提案写 \`动漫/[具体作品名]\`。
 
 ### 任务二：文案生成
 
@@ -529,7 +530,7 @@ export const SERIES_TEMPLATES = {
 
 **类型识别**：
 - 是否为特定 IP 形象？[如 Hello Kitty、乌萨奇等]
-- 是否为动漫角色？[如哆啦A梦、海贼王角色等]
+- 是否为动漫角色？[如现有目录中的具体动漫角色或作品子类]
 - 是否为人像？[卡通简笔画、氛围感、甜妹等]
 
 **风格特点**：
@@ -606,7 +607,7 @@ export const SERIES_TEMPLATES = {
    - 认出具体IP角色（如Hello Kitty、乌萨奇、水豚噜噜），必须归入对应 IP 子类。
 
 2. **动漫角色**：
-   - 认出具体动漫角色（如哆啦A梦、海贼王角色），归入对应动漫子类。
+   - 认出具体动漫角色，且现有目录中已有对应子类时，归入对应动漫子类。
    - 如果是动漫风格但无法识别具体作品 -> 动漫/通用
 
 ### B. 人像分类决策树
@@ -719,13 +720,20 @@ export function replaceVariables(template, variables) {
  * @param {string} primaryCategory - 主分类
  * @returns {Object} 变量对象
  */
-export function buildVariables(primaryCategory) {
-  const secondaryCategories = CATEGORIES[primaryCategory]?.subcategories || []
+export function buildVariables(primaryCategory, categoryTree = null) {
+  const dynamicSeries = categoryTree?.[primaryCategory]
+  const secondaryCategories =
+    dynamicSeries?.secondary?.length > 0
+      ? dynamicSeries.secondary.map(value => ({ value }))
+      : CATEGORIES[primaryCategory]?.subcategories || []
   const secondaryList = secondaryCategories.map(cat => cat.value).join('、')
 
   let thirdHints = ''
   secondaryCategories.forEach(cat => {
-    const thirdList = getThirdLevelCategories(primaryCategory, cat.value)
+    const thirdList =
+      dynamicSeries?.third?.[cat.value]?.length > 0
+        ? dynamicSeries.third[cat.value]
+        : getThirdLevelCategories(primaryCategory, cat.value)
     thirdHints += `• ${cat.value}：${thirdList.join('、')}\n`
   })
 
@@ -744,7 +752,13 @@ export function buildVariables(primaryCategory) {
  * @param {string} provider - AI Provider（可选，用于选择专用模板）
  * @returns {string} 构建的提示词
  */
-export function buildPrompt(templateId, primaryCategory, customPrompt = '', provider = null) {
+export function buildPrompt(
+  templateId,
+  primaryCategory,
+  customPrompt = '',
+  provider = null,
+  categoryTree = null
+) {
   if (templateId === 'custom') {
     return customPrompt
   }
@@ -755,7 +769,7 @@ export function buildPrompt(templateId, primaryCategory, customPrompt = '', prov
     if (provider === 'cloudflare') {
       const cloudflareTemplate = SERIES_TEMPLATES[`cloudflare_${primaryCategory}`]
       if (cloudflareTemplate) {
-        const variables = buildVariables(primaryCategory)
+        const variables = buildVariables(primaryCategory, categoryTree)
         return replaceVariables(cloudflareTemplate, variables)
       }
     }
@@ -763,7 +777,7 @@ export function buildPrompt(templateId, primaryCategory, customPrompt = '', prov
     // 使用标准系列模板
     const specialTemplate = SERIES_TEMPLATES[primaryCategory]
     if (specialTemplate) {
-      const variables = buildVariables(primaryCategory)
+      const variables = buildVariables(primaryCategory, categoryTree)
       return replaceVariables(specialTemplate, variables)
     }
   }
@@ -778,8 +792,19 @@ export function buildPrompt(templateId, primaryCategory, customPrompt = '', prov
     return template.template
   }
 
-  const variables = buildVariables(primaryCategory)
+  const variables = buildVariables(primaryCategory, categoryTree)
   return replaceVariables(template.template, variables)
+}
+
+export async function buildPromptWithLatestCategories(
+  templateId,
+  primaryCategory,
+  customPrompt = '',
+  provider = null,
+  options = {}
+) {
+  const categoryTree = await getUploadCategoryTree(options)
+  return buildPrompt(templateId, primaryCategory, customPrompt, provider, categoryTree)
 }
 
 /**
