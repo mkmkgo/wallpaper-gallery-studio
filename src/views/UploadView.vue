@@ -226,7 +226,7 @@
         :visible="showEditAIModal"
         :file="editAIFile"
         :saving="savingAI"
-        @close="showEditAIModal = false"
+        @close="closeEditAIModal"
         @save="handleSaveAIResult"
       />
     </div>
@@ -248,20 +248,19 @@ import DeleteCategoryModal from '@/components/upload/DeleteCategoryModal.vue'
 import UploadProgressModal from '@/components/upload/UploadProgressModal.vue'
 import TargetSelectModal from '@/components/upload/TargetSelectModal.vue'
 import EditAIResultModal from '@/components/upload/EditAIResultModal.vue'
-import { githubService } from '@/services/github'
-import { localStorageService } from '@/services/localStorage'
-import { clearUploadCategoryTreeCache } from '@/services/upload/category-directory'
 import { useConfigStore } from '@/stores/config'
 import { useUploadStore } from '@/stores/upload'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkflowStore } from '@/stores/workflow'
 import { debounce } from '@/utils/debounce'
 import { detectBatchImageTypes, getDetectionStats } from '@/utils/image-detector'
+import { useUploadWorkspaceInfrastructure } from '@/features/upload-workspace/composables/use-upload-workspace-infrastructure'
 
 const configStore = useConfigStore()
 const uploadStore = useUploadStore()
 const authStore = useAuthStore()
 const workflowStore = useWorkflowStore()
+const uploadWorkspace = useUploadWorkspaceInfrastructure()
 
 const viewRef = ref(null)
 const sidebarRef = ref(null)
@@ -370,48 +369,6 @@ function handleSidebarResize() {
   syncSidebarAccordion(false)
 }
 
-const categoryCache = new Map()
-const CACHE_TTL = 5 * 60 * 1000
-
-function getCache(key) {
-  const c = categoryCache.get(key)
-  return c && Date.now() - c.timestamp < CACHE_TTL ? c.data : null
-}
-
-function setCache(key, data) {
-  categoryCache.set(key, { data, timestamp: Date.now() })
-}
-
-function clearCategoryCaches() {
-  categoryCache.clear()
-  clearUploadCategoryTreeCache()
-  githubService.clearDirectoryCache()
-}
-
-async function waitForDirectorySync(path, { shouldExist, attempts = 8, delay = 700 } = {}) {
-  const { owner, repo, branch } = configStore.config
-
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      await githubService.getContents(owner, repo, path, branch, { forceRefresh: true })
-
-      if (shouldExist) {
-        return true
-      }
-    } catch (error) {
-      if (!shouldExist && (error.status === 404 || error.type === 'NOT_FOUND')) {
-        return true
-      }
-    }
-
-    if (attempt < attempts - 1) {
-      await new Promise(resolve => setTimeout(resolve, delay))
-    }
-  }
-
-  return false
-}
-
 function selectSeries(value) {
   series.value = value
   uploadStore.setTarget(value, '', '')
@@ -420,7 +377,7 @@ function selectSeries(value) {
 }
 
 async function handleRefreshCategories() {
-  clearCategoryCaches()
+  uploadWorkspace.clearCategoryCaches()
   forceCategoryFetch.value = true
   syncingCategories.value = true
   treeKey.value++
@@ -432,40 +389,9 @@ async function handleRefreshCategories() {
 }
 
 async function loadRootCategories(forceRefresh = false) {
-  const cacheKey = `${series.value}-root`
-  const cached = forceRefresh ? null : getCache(cacheKey)
-  console.log('[loadRootCategories] cacheKey:', cacheKey, 'cached:', !!cached)
-  if (cached) {
-    treeData.value = cached
-    return
-  }
-
   loading.value = true
   try {
-    const { owner, repo, branch } = configStore.config
-    console.log('[loadRootCategories] Fetching from GitHub...')
-    const contents = await githubService.getContents(
-      owner,
-      repo,
-      `wallpaper/${series.value}`,
-      branch,
-      { forceRefresh }
-    )
-    const categories = contents
-      .filter(i => i.type === 'dir')
-      .map(i => ({
-        name: i.name,
-        path: i.path,
-        type: 'l1',
-        children: [],
-        loaded: false
-      }))
-    console.log(
-      '[loadRootCategories] Got categories:',
-      categories.map(c => c.name)
-    )
-    treeData.value = categories
-    setCache(cacheKey, categories)
+    treeData.value = await uploadWorkspace.loadRootCategories(series.value, forceRefresh)
   } catch (err) {
     console.error('[loadRootCategories] Error:', err)
     treeData.value = []
@@ -487,22 +413,8 @@ async function loadNode(node, resolve) {
     return
   }
 
-  const cached = getCache(node.data.path)
-  if (cached) {
-    resolve(cached)
-    return
-  }
-
   try {
-    const { owner, repo, branch } = configStore.config
-    const contents = await githubService.getContents(owner, repo, node.data.path, branch, {
-      forceRefresh: forceCategoryFetch.value
-    })
-    const children = contents
-      .filter(i => i.type === 'dir')
-      .map(i => ({ name: i.name, path: i.path, type: 'l2' }))
-    setCache(node.data.path, children)
-    resolve(children)
+    resolve(await uploadWorkspace.loadChildCategories(node.data.path, forceCategoryFetch.value))
   } catch {
     resolve([])
   }
@@ -607,20 +519,7 @@ async function handleUpload() {
     }
 
     // 保存上传记录到本地存储
-    if (ok > 0 && localStorageService.isInitialized()) {
-      const successFiles = results.results
-        .filter(r => r.success)
-        .map(r => {
-          const file = uploadStore.files.find(f => f.id === r.id)
-          return {
-            fileName: file?.name || r.id,
-            series: file?.series || series.value,
-            category: file?.targetPath || '',
-            size: file?.size || 0
-          }
-        })
-      localStorageService.addUploadRecords(successFiles)
-    }
+    uploadWorkspace.persistSuccessfulUploads(results.results, uploadStore.files, series.value)
 
     ElMessage[fail ? 'warning' : 'success'](
       fail
@@ -642,14 +541,7 @@ async function handleUpload() {
     // 上传成功后刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
     if (ok > 0) {
       setTimeout(async () => {
-        const { owner, repo, branch } = configStore.config
-        await workflowStore.refreshPendingInfo(owner, repo, branch)
-        // 如果还是 0，再等 2 秒重试一次
-        if (workflowStore.pendingInfo.pendingCount === 0) {
-          setTimeout(() => {
-            workflowStore.refreshPendingInfo(owner, repo, branch)
-          }, 2000)
-        }
+        await uploadWorkspace.refreshWorkflowPending(workflowStore)
       }, 2000)
     }
   } catch (e) {
@@ -744,6 +636,11 @@ function handleEditAI(file) {
   showEditAIModal.value = true
 }
 
+function closeEditAIModal() {
+  showEditAIModal.value = false
+  editAIFile.value = null
+}
+
 // 保存 AI 分析结果修改
 async function handleSaveAIResult({ fileId, aiMetadata }) {
   savingAI.value = true
@@ -752,8 +649,7 @@ async function handleSaveAIResult({ fileId, aiMetadata }) {
     uploadStore.setFileAiMetadata(fileId, aiMetadata, true)
 
     ElMessage.success('AI 分析结果已更新')
-    showEditAIModal.value = false
-    editAIFile.value = null
+    closeEditAIModal()
   } catch (error) {
     ElMessage.error('保存失败：' + error.message)
   } finally {
@@ -775,20 +671,7 @@ async function handleRetry() {
     }
 
     // 保存上传记录到本地存储
-    if (ok > 0 && localStorageService.isInitialized()) {
-      const successFiles = results.results
-        .filter(r => r.success)
-        .map(r => {
-          const file = uploadStore.files.find(f => f.id === r.id)
-          return {
-            fileName: file?.name || r.id,
-            series: file?.series || series.value,
-            category: file?.targetPath || '',
-            size: file?.size || 0
-          }
-        })
-      localStorageService.addUploadRecords(successFiles)
-    }
+    uploadWorkspace.persistSuccessfulUploads(results.results, uploadStore.files, series.value)
 
     ElMessage[fail ? 'warning' : 'success'](
       fail ? `重试完成：${ok} 成功，${fail} 失败` : `重试成功，${ok} 个文件已上传`
@@ -803,13 +686,7 @@ async function handleRetry() {
     // 刷新工作流状态
     if (ok > 0) {
       setTimeout(async () => {
-        const { owner, repo, branch } = configStore.config
-        await workflowStore.refreshPendingInfo(owner, repo, branch)
-        if (workflowStore.pendingInfo.pendingCount === 0) {
-          setTimeout(() => {
-            workflowStore.refreshPendingInfo(owner, repo, branch)
-          }, 2000)
-        }
+        await uploadWorkspace.refreshWorkflowPending(workflowStore)
       }, 2000)
     }
   } catch (e) {
@@ -829,31 +706,16 @@ async function createCategory(form) {
 
   creating.value = true
   try {
-    const { owner, repo, branch } = configStore.config
-    let categoryPath = `wallpaper/${series.value}`
+    const { synced } = await uploadWorkspace.createCategory({
+      series: series.value,
+      selectedL1: selectedL1.value,
+      form
+    })
 
-    // 根据是否有父分类决定创建一级还是二级
-    if (form.level === 'l2' && selectedL1.value) {
-      categoryPath += `/${selectedL1.value}`
-    }
-    categoryPath += `/${form.name}`
-    const gitkeepPath = `${categoryPath}/.gitkeep`
-
-    await githubService.createFile(
-      owner,
-      repo,
-      gitkeepPath,
-      '',
-      `Create category: ${form.name}`,
-      branch
-    )
-
-    clearCategoryCaches()
+    uploadWorkspace.clearCategoryCaches()
     forceCategoryFetch.value = true
     syncingCategories.value = true
     loading.value = true
-
-    const synced = await waitForDirectorySync(categoryPath, { shouldExist: true })
 
     await loadRootCategories(true)
     treeKey.value++
@@ -869,30 +731,8 @@ async function createCategory(form) {
 }
 
 async function handleDeleteCategory({ data }) {
-  const { owner, repo, branch } = configStore.config
-
   try {
-    // 先检查目录内容
-    let contents = []
-    let hasImages = false
-    let hasSubDirs = false
-
-    try {
-      contents = await githubService.getContents(owner, repo, data.path, branch)
-      if (!Array.isArray(contents)) {
-        contents = [contents]
-      }
-      hasImages = contents.some(
-        item => item.type === 'file' && /\.(jpg|jpeg|png|gif|webp)$/i.test(item.name)
-      )
-      hasSubDirs = contents.some(item => item.type === 'dir')
-    } catch (err) {
-      if (err.status === 404 || err.type === 'NOT_FOUND') {
-        contents = []
-      } else {
-        throw err
-      }
-    }
+    const { hasImages, hasSubDirs } = await uploadWorkspace.inspectCategory(data.path)
 
     // 设置删除目标并打开弹窗
     deleteTarget.data = data
@@ -908,23 +748,17 @@ async function handleDeleteCategory({ data }) {
 async function confirmDeleteCategory() {
   if (!deleteTarget.data) return
 
-  const { owner, repo, branch } = configStore.config
   const data = deleteTarget.data
 
   deleting.value = true
   try {
-    // 递归删除目录下所有文件
-    await deleteDirectoryRecursive(owner, repo, data.path, branch)
+    const { synced } = await uploadWorkspace.deleteCategory(data.path)
 
-    // 关闭弹窗
     showDeleteModal.value = false
-
-    clearCategoryCaches()
+    uploadWorkspace.clearCategoryCaches()
     forceCategoryFetch.value = true
     syncingCategories.value = true
     loading.value = true
-
-    const synced = await waitForDirectorySync(data.path, { shouldExist: false })
 
     await loadRootCategories(true)
     treeKey.value++
@@ -945,55 +779,11 @@ async function confirmDeleteCategory() {
   }
 }
 
-async function deleteDirectoryRecursive(owner, repo, path, branch) {
-  let contents = []
-
-  try {
-    contents = await githubService.getContents(owner, repo, path, branch)
-    // 确保 contents 是数组
-    if (!Array.isArray(contents)) {
-      contents = [contents]
-    }
-  } catch (err) {
-    // 目录为空或不存在，无需删除
-    if (err.status === 404 || err.type === 'NOT_FOUND') {
-      return
-    }
-    throw err
-  }
-
-  for (const item of contents) {
-    if (item.type === 'dir') {
-      // 递归删除子目录
-      await deleteDirectoryRecursive(owner, repo, item.path, branch)
-    } else {
-      // 删除文件（包括 .gitkeep）
-      await githubService.deleteFile(
-        owner,
-        repo,
-        item.path,
-        item.sha,
-        `Delete: ${item.name}`,
-        branch
-      )
-    }
-  }
-}
-
 // 原始刷新统计函数
 async function _refreshStats() {
   loadingStats.value = true
   try {
-    const { owner, repo, branch } = configStore.config
-    for (const type of ['desktop', 'mobile', 'avatar']) {
-      try {
-        const c = await githubService.getContents(owner, repo, `wallpaper/${type}`, branch)
-        stats[type] = c.filter(i => i.type === 'dir').length
-      } catch {
-        stats[type] = 0
-      }
-    }
-    stats.total = stats.desktop + stats.mobile + stats.avatar
+    Object.assign(stats, await uploadWorkspace.refreshStats())
   } catch {
     // 忽略统计加载错误
   } finally {
@@ -1049,7 +839,7 @@ onUnmounted(() => {
   uploadStore.cleanup()
 
   // 清理分类缓存
-  clearCategoryCaches()
+  uploadWorkspace.clearCategoryCaches()
 
   window.removeEventListener('resize', handleSidebarResize)
   gsap.killTweensOf([previewPanelRef.value, workflowPanelRef.value])

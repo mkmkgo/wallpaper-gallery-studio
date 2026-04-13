@@ -5,7 +5,11 @@
         <div class="modal">
           <div class="modal__header">
             <h3>🤖 编辑 AI 分析结果</h3>
-            <button class="modal__close" @click="handleRequestClose">
+            <button
+              class="modal__close"
+              :disabled="closingPromptVisible"
+              @click="handleRequestClose"
+            >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path
                   d="M1 1L13 13M1 13L13 1"
@@ -152,7 +156,13 @@
           </div>
 
           <div class="modal__footer">
-            <button class="modal__btn modal__btn--cancel" @click="handleRequestClose">取消</button>
+            <button
+              class="modal__btn modal__btn--cancel"
+              :disabled="closingPromptVisible"
+              @click="handleRequestClose"
+            >
+              取消
+            </button>
             <button
               class="modal__btn modal__btn--confirm"
               :disabled="saving || !isFormValid"
@@ -205,6 +215,7 @@ const seriesLabelMap = {
 const categoryData = ref(getFallbackUploadCategoryTree())
 
 const loadingCategories = ref(false)
+const closingPromptVisible = ref(false)
 const initialSnapshot = ref('')
 
 // 从 GitHub 获取分类数据
@@ -272,6 +283,11 @@ const isDirty = computed(() => JSON.stringify(getFormSnapshot()) !== initialSnap
 watch(
   () => [props.visible, props.file],
   ([visible, file]) => {
+    if (!visible) {
+      closingPromptVisible.value = false
+      return
+    }
+
     if (visible) {
       // 弹窗打开时加载分类数据
       loadCategoriesFromGitHub(true)
@@ -377,13 +393,14 @@ function removeKeyword(index) {
 }
 
 async function handleRequestClose() {
-  if (props.saving) return
+  if (props.saving || closingPromptVisible.value) return
 
   if (!isDirty.value) {
     emit('close')
     return
   }
 
+  closingPromptVisible.value = true
   try {
     await ElMessageBox.confirm('当前修改尚未保存，确定要关闭吗？', '放弃修改', {
       confirmButtonText: '放弃修改',
@@ -393,6 +410,8 @@ async function handleRequestClose() {
     emit('close')
   } catch {
     // 继续编辑
+  } finally {
+    closingPromptVisible.value = false
   }
 }
 
