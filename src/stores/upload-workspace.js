@@ -1,0 +1,52 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+
+export const useUploadWorkspaceStore = defineStore('upload-workspace', () => {
+  const uploadMode = ref('ai')
+  const selectedModelKey = ref(null)
+  const series = ref('desktop')
+  const categoryL1 = ref('')
+  const categoryL2 = ref('')
+
+  const targetPath = computed(() => {
+    if (!categoryL1.value) return ''
+    const parts = ['wallpaper', series.value, categoryL1.value]
+    if (categoryL2.value) {
+      parts.push(categoryL2.value)
+    }
+    return parts.join('/')
+  })
+
+  function setTarget(newSeries, l1, l2 = '') {
+    series.value = newSeries
+    categoryL1.value = l1
+    categoryL2.value = l2
+  }
+
+  function setSeries(newSeries) {
+    series.value = newSeries
+  }
+
+  function setUploadMode(mode) {
+    if (mode === 'ai' || mode === 'manual') {
+      uploadMode.value = mode
+    }
+  }
+
+  function setAiModel(modelKey) {
+    selectedModelKey.value = modelKey
+  }
+
+  return {
+    uploadMode,
+    selectedModelKey,
+    series,
+    categoryL1,
+    categoryL2,
+    targetPath,
+    setTarget,
+    setSeries,
+    setUploadMode,
+    setAiModel
+  }
+})

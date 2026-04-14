@@ -5,19 +5,30 @@ import { githubService } from '@/services/github'
 const STORAGE_KEY = 'wallpaper_admin_config'
 
 // 默认配置
+// owner / repo / branch 支持通过环境变量预填充，便于部署时免去手动配置
+// 开源用户需在 .env.local 中填写自己的仓库信息
 const DEFAULT_CONFIG = {
-  owner: 'IT-NuanxinPro',
-  repo: 'nuanXinProPic',
-  branch: 'main',
-  clientId: 'Ov23li2QrljIDmhjRkGU'
+  owner: import.meta.env.VITE_GITHUB_REPO_OWNER || '',
+  repo: import.meta.env.VITE_GITHUB_REPO_NAME || '',
+  branch: import.meta.env.VITE_GITHUB_REPO_BRANCH || 'main',
+  clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || ''
 }
 
 export const useConfigStore = defineStore('config', () => {
   // 从 localStorage 加载配置
+  // 策略：localStorage 中的值优先（用户手动改过），但如果某项为空则回退到环境变量默认值
   const loadConfig = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? { ...DEFAULT_CONFIG, ...JSON.parse(stored) } : { ...DEFAULT_CONFIG }
+      if (!stored) return { ...DEFAULT_CONFIG }
+      const parsed = JSON.parse(stored)
+      // 逐字段合并：localStorage 有值则用，为空时用环境变量默认值
+      return {
+        owner: parsed.owner || DEFAULT_CONFIG.owner,
+        repo: parsed.repo || DEFAULT_CONFIG.repo,
+        branch: parsed.branch || DEFAULT_CONFIG.branch,
+        clientId: parsed.clientId || DEFAULT_CONFIG.clientId
+      }
     } catch {
       return { ...DEFAULT_CONFIG }
     }

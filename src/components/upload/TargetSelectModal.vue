@@ -86,8 +86,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { Close } from '@element-plus/icons-vue'
-import { githubService } from '@/services/github'
-import { useConfigStore } from '@/stores/config'
+import { useUploadWorkspaceInfrastructure } from '@/features/upload-workspace/composables/use-upload-workspace-infrastructure'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -97,7 +96,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'confirm'])
 
-const configStore = useConfigStore()
+const uploadWorkspace = useUploadWorkspaceInfrastructure()
 const treeRef = ref(null)
 
 const seriesOptions = [
@@ -133,22 +132,7 @@ watch(
 
 async function loadRootCategories() {
   try {
-    const { owner, repo, branch } = configStore.config
-    const contents = await githubService.getContents(
-      owner,
-      repo,
-      `wallpaper/${selectedSeries.value}`,
-      branch
-    )
-    localTreeData.value = contents
-      .filter(i => i.type === 'dir')
-      .map(i => ({
-        name: i.name,
-        path: i.path,
-        type: 'l1',
-        children: [],
-        loaded: false
-      }))
+    localTreeData.value = await uploadWorkspace.loadRootCategories(selectedSeries.value)
   } catch {
     localTreeData.value = []
   }
@@ -172,12 +156,7 @@ async function handleLoadNode(node, resolve) {
   }
 
   try {
-    const { owner, repo, branch } = configStore.config
-    const contents = await githubService.getContents(owner, repo, node.data.path, branch)
-    const children = contents
-      .filter(i => i.type === 'dir')
-      .map(i => ({ name: i.name, path: i.path, type: 'l2' }))
-    resolve(children)
+    resolve(await uploadWorkspace.loadChildCategories(node.data.path))
   } catch {
     resolve([])
   }

@@ -75,7 +75,11 @@
       </GlassCard>
 
       <!-- 预览弹窗 -->
-      <el-dialog v-model="previewVisible" :title="previewRecord?.filename" width="600px">
+      <el-dialog
+        v-model="previewVisible"
+        :title="previewRecord?.filename"
+        class="history-view__preview-dialog"
+      >
         <div class="history-view__preview">
           <p><strong>分类：</strong>{{ previewRecord?.category }}</p>
           <p><strong>系列：</strong>{{ previewRecord?.series }}</p>
@@ -364,6 +368,12 @@ onMounted(() => {
       margin-bottom: $spacing-2;
       color: $gray-700;
     }
+  }
+
+  // 预览弹窗响应式
+  :deep(.history-view__preview-dialog) {
+    width: 90%;
+    max-width: 600px;
   }
 }
 </style>

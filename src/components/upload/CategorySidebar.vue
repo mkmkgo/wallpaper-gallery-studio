@@ -6,27 +6,31 @@
           <el-icon><Folder /></el-icon>
           分类目录
         </h3>
-        <span
-          class="category-sidebar__status"
-          :class="{
-            'category-sidebar__status--selected': targetPath,
-            'category-sidebar__status--pending': !targetPath
-          }"
-        >
-          {{ targetPath ? '已选择' : '待选择' }}
-        </span>
-        <span v-if="syncing" class="category-sidebar__syncing">
-          <span class="category-sidebar__syncing-dot"></span>
-          同步中…
-        </span>
-        <button
-          class="category-sidebar__refresh-btn"
-          title="刷新目录"
-          :disabled="syncing"
-          @click="$emit('refresh')"
-        >
-          <el-icon><Refresh /></el-icon>
-        </button>
+
+        <div class="category-sidebar__header-actions">
+          <span v-if="syncing" class="category-sidebar__syncing">
+            <span class="category-sidebar__syncing-dot"></span>
+            同步中
+          </span>
+          <span
+            v-else
+            class="category-sidebar__status"
+            :class="{
+              'category-sidebar__status--selected': targetPath,
+              'category-sidebar__status--pending': !targetPath
+            }"
+          >
+            {{ targetPath ? '已选择' : '待选择' }}
+          </span>
+          <button
+            class="category-sidebar__refresh-btn"
+            title="刷新目录"
+            :disabled="syncing"
+            @click="$emit('refresh')"
+          >
+            <el-icon><Refresh /></el-icon>
+          </button>
+        </div>
       </div>
 
       <p class="category-sidebar__hint" :title="currentPathLabel">{{ currentPathLabel }}</p>
@@ -50,7 +54,11 @@
     <div class="category-sidebar__tree-shell">
       <div class="category-sidebar__tree-toolbar">
         <span class="category-sidebar__tree-toolbar-label">{{ currentSeriesLabel }}目录</span>
-        <span class="category-sidebar__tree-toolbar-tip">点击目录即可设为目标路径</span>
+        <el-tooltip content="点击目录即可设为目标路径" placement="top" :show-after="400">
+          <span class="category-sidebar__tree-toolbar-tip">
+            <el-icon><InfoFilled /></el-icon>
+          </span>
+        </el-tooltip>
       </div>
 
       <div v-if="currentPathSegments.length" class="category-sidebar__current-path">
@@ -143,7 +151,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Folder, Plus, Delete, Refresh } from '@element-plus/icons-vue'
+import { Folder, Plus, Delete, Refresh, InfoFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -239,8 +247,16 @@ function handleDelete(data, node) {
   &__header-top {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: $spacing-2;
     min-width: 0;
+  }
+
+  &__header-actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-2;
+    flex-shrink: 0;
   }
 
   &__title {
@@ -272,8 +288,8 @@ function handleDelete(data, node) {
   &__status {
     display: inline-flex;
     align-items: center;
-    min-height: 28px;
-    padding: 0 $spacing-3;
+    min-height: 26px;
+    padding: 0 $spacing-2;
     border: 1px solid transparent;
     border-radius: $radius-full;
     font-size: 11px;
@@ -296,8 +312,8 @@ function handleDelete(data, node) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 28px;
-    padding: 0 $spacing-3;
+    min-height: 26px;
+    padding: 0 $spacing-2;
     color: #c4b5fd;
     font-size: 11px;
     font-weight: 600;
@@ -446,12 +462,28 @@ function handleDelete(data, node) {
     }
 
     &-tip {
-      max-width: 110px;
-      flex-shrink: 1;
-      color: $gray-500;
-      font-size: 11px;
-      line-height: 1.5;
-      text-align: right;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      color: $gray-600;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      cursor: default;
+      transition: all $duration-fast $ease-out;
+      flex-shrink: 0;
+
+      .el-icon {
+        font-size: 12px;
+      }
+
+      &:hover {
+        color: $white;
+        background: rgba($primary-start, 0.16);
+        border-color: rgba($primary-start, 0.24);
+      }
     }
   }
 

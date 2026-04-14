@@ -584,6 +584,73 @@ async function addFiles(files) {
     ElMessage.warning(`${imgs.length - added.length} 个文件不符合要求`)
 }
 
+// 处理上传结果（handleUpload 和 handleRetry 公共逻辑）
+function handleUploadResults(results, messagePrefix = '上传') {
+  const ok = results.results.filter(r => r.success).length
+  const fail = results.results.length - ok
+  const reused = results.results.filter(r => r.reusedExisting).length
+
+  // 更新会话上传计数
+  if (ok > 0) {
+    workflowStore.addSessionUpload(ok)
+  }
+
+  // 保存上传记录到本地存储
+  if (ok > 0 && localStorageService.isInitialized()) {
+    const successFiles = results.results
+      .filter(r => r.success)
+      .map(r => {
+        const file = uploadStore.files.find(f => f.id === r.id)
+        return {
+          fileName: file?.name || r.id,
+          series: file?.series || series.value,
+          category: file?.targetPath || '',
+          size: file?.size || 0
+        }
+      })
+    localStorageService.addUploadRecords(successFiles)
+  }
+
+  // 显示消息
+  if (messagePrefix === '上传') {
+    ElMessage[fail ? 'warning' : 'success'](
+      fail
+        ? `上传完成：${ok} 成功，${fail} 失败${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
+        : `成功处理 ${ok} 个文件${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
+    )
+    if (results.metadataResult?.success === false) {
+      ElMessage.warning(`图片已上传，但元数据生成失败：${results.metadataResult.error}`)
+    }
+    // 清理成功上传的文件（释放内存）
+    if (ok > 0 && results.metadataResult?.success !== false) {
+      uploadStore.clearSuccessFiles()
+    }
+  } else {
+    ElMessage[fail ? 'warning' : 'success'](
+      fail ? `重试完成：${ok} 成功，${fail} 失败` : `重试成功，${ok} 个文件已上传`
+    )
+    // 清理成功上传的文件
+    if (ok > 0) {
+      uploadStore.clearSuccessFiles()
+    }
+  }
+
+  refreshStats()
+
+  // 刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
+  if (ok > 0) {
+    setTimeout(async () => {
+      const { owner, repo, branch } = configStore.config
+      await workflowStore.refreshPendingInfo(owner, repo, branch)
+      if (workflowStore.pendingInfo.pendingCount === 0) {
+        setTimeout(() => {
+          workflowStore.refreshPendingInfo(owner, repo, branch)
+        }, 2000)
+      }
+    }, 2000)
+  }
+}
+
 async function handleUpload() {
   // 检查是否有文件没有目标路径
   const filesWithoutTarget = uploadStore.pendingFiles.filter(f => !f.targetPath)
@@ -597,61 +664,7 @@ async function handleUpload() {
 
   try {
     const results = await uploadStore.uploadAll()
-    const ok = results.results.filter(r => r.success).length
-    const fail = results.results.length - ok
-    const reused = results.results.filter(r => r.reusedExisting).length
-
-    // 更新会话上传计数
-    if (ok > 0) {
-      workflowStore.addSessionUpload(ok)
-    }
-
-    // 保存上传记录到本地存储
-    if (ok > 0 && localStorageService.isInitialized()) {
-      const successFiles = results.results
-        .filter(r => r.success)
-        .map(r => {
-          const file = uploadStore.files.find(f => f.id === r.id)
-          return {
-            fileName: file?.name || r.id,
-            series: file?.series || series.value,
-            category: file?.targetPath || '',
-            size: file?.size || 0
-          }
-        })
-      localStorageService.addUploadRecords(successFiles)
-    }
-
-    ElMessage[fail ? 'warning' : 'success'](
-      fail
-        ? `上传完成：${ok} 成功，${fail} 失败${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
-        : `成功处理 ${ok} 个文件${reused > 0 ? `（其中 ${reused} 个复用已上传图片）` : ''}`
-    )
-
-    if (results.metadataResult?.success === false) {
-      ElMessage.warning(`图片已上传，但元数据生成失败：${results.metadataResult.error}`)
-    }
-
-    refreshStats()
-
-    // 清理成功上传的文件（释放内存）
-    if (ok > 0 && results.metadataResult?.success !== false) {
-      uploadStore.clearSuccessFiles()
-    }
-
-    // 上传成功后刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
-    if (ok > 0) {
-      setTimeout(async () => {
-        const { owner, repo, branch } = configStore.config
-        await workflowStore.refreshPendingInfo(owner, repo, branch)
-        // 如果还是 0，再等 2 秒重试一次
-        if (workflowStore.pendingInfo.pendingCount === 0) {
-          setTimeout(() => {
-            workflowStore.refreshPendingInfo(owner, repo, branch)
-          }, 2000)
-        }
-      }, 2000)
-    }
+    handleUploadResults(results, '上传')
   } catch (e) {
     ElMessage.error(e.message || '上传失败')
   }
@@ -769,53 +782,7 @@ async function handleRetry() {
   try {
     const results = await uploadStore.retryFailed()
     if (!results) return
-
-    const ok = results.results.filter(r => r.success).length
-    const fail = results.results.length - ok
-
-    // 更新会话上传计数
-    if (ok > 0) {
-      workflowStore.addSessionUpload(ok)
-    }
-
-    // 保存上传记录到本地存储
-    if (ok > 0 && localStorageService.isInitialized()) {
-      const successFiles = results.results
-        .filter(r => r.success)
-        .map(r => {
-          const file = uploadStore.files.find(f => f.id === r.id)
-          return {
-            fileName: file?.name || r.id,
-            series: file?.series || series.value,
-            category: file?.targetPath || '',
-            size: file?.size || 0
-          }
-        })
-      localStorageService.addUploadRecords(successFiles)
-    }
-
-    ElMessage[fail ? 'warning' : 'success'](
-      fail ? `重试完成：${ok} 成功，${fail} 失败` : `重试成功，${ok} 个文件已上传`
-    )
-    refreshStats()
-
-    // 清理成功上传的文件
-    if (ok > 0) {
-      uploadStore.clearSuccessFiles()
-    }
-
-    // 刷新工作流状态
-    if (ok > 0) {
-      setTimeout(async () => {
-        const { owner, repo, branch } = configStore.config
-        await workflowStore.refreshPendingInfo(owner, repo, branch)
-        if (workflowStore.pendingInfo.pendingCount === 0) {
-          setTimeout(() => {
-            workflowStore.refreshPendingInfo(owner, repo, branch)
-          }, 2000)
-        }
-      }, 2000)
-    }
+    handleUploadResults(results, '重试')
   } catch (e) {
     ElMessage.error(e.message || '重试失败')
   }

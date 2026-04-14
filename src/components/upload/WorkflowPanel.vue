@@ -332,25 +332,34 @@ function getProgressTitle() {
   return '工作流运行中...'
 }
 
-const WORKFLOW_OWNER = 'IT-NuanxinPro'
-const WORKFLOW_REPO = 'wallpaper-gallery-workflow'
-const FRONTEND_OWNER = 'IT-NuanxinPro'
-const FRONTEND_REPO = 'wallpaper-gallery'
+const WORKFLOW_OWNER = import.meta.env.VITE_WORKFLOW_OWNER || ''
+const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || ''
+const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || ''
+const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || ''
 
 async function refresh() {
   const { owner, repo, branch } = configStore.config
   try {
-    await Promise.all([
+    const tasks = [
       workflowStore.refreshPendingInfo(owner, repo, branch),
-      workflowStore.refreshStatsData(owner, repo, branch),
-      workflowStore.refreshWorkflowStatus(WORKFLOW_OWNER, WORKFLOW_REPO)
-    ])
+      workflowStore.refreshStatsData(owner, repo, branch)
+    ]
+
+    if (WORKFLOW_OWNER && WORKFLOW_REPO) {
+      tasks.push(workflowStore.refreshWorkflowStatus(WORKFLOW_OWNER, WORKFLOW_REPO))
+    }
+
+    await Promise.all(tasks)
   } catch (error) {
     ElMessage.error('刷新失败: ' + (error.message || '未知错误'))
   }
 }
 
 async function handleTrigger() {
+  if (!WORKFLOW_OWNER || !WORKFLOW_REPO) {
+    ElMessage.warning('未配置工作流仓库，请先配置 VITE_WORKFLOW_OWNER 和 VITE_WORKFLOW_REPO')
+    return
+  }
   try {
     const publisher = authStore.user?.login || ''
     await workflowStore.triggerWorkflow(WORKFLOW_OWNER, WORKFLOW_REPO, '', publisher)
@@ -380,6 +389,10 @@ async function handleTrigger() {
 }
 
 async function handleRollback() {
+  if (!WORKFLOW_OWNER || !WORKFLOW_REPO) {
+    ElMessage.warning('未配置工作流仓库，请先配置 VITE_WORKFLOW_OWNER 和 VITE_WORKFLOW_REPO')
+    return
+  }
   const tagName = pendingInfo.value.latestTag
   if (!tagName) {
     ElMessage.warning('没有可回滚的版本')
@@ -419,6 +432,10 @@ async function handleRollback() {
 }
 
 async function handleDeployFrontend() {
+  if (!FRONTEND_OWNER || !FRONTEND_REPO) {
+    ElMessage.warning('未配置前端仓库，请先配置 VITE_FRONTEND_OWNER 和 VITE_FRONTEND_REPO')
+    return
+  }
   try {
     await ElMessageBox.confirm(
       '确定要重新部署前端吗？\n\n这将：\n• 触发 GitHub Pages 重新构建\n• 更新 CDN 版本号\n• 清除 Cloudflare 缓存\n\n部署过程约需 2-3 分钟',
@@ -472,7 +489,10 @@ function getWorkflowRunUrl() {
   const run = workflowStatus.value.latestRun
   if (!run) return ''
   return (
-    run.html_url || `https://github.com/${WORKFLOW_OWNER}/${WORKFLOW_REPO}/actions/runs/${run.id}`
+    run.html_url ||
+    (WORKFLOW_OWNER && WORKFLOW_REPO
+      ? `https://github.com/${WORKFLOW_OWNER}/${WORKFLOW_REPO}/actions/runs/${run.id}`
+      : '')
   )
 }
 

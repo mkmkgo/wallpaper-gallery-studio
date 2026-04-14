@@ -1,14 +1,14 @@
 // GitHub OAuth 配置
+const appOrigin = globalThis.location?.origin || 'http://localhost:5173'
+
 export const oauthConfig = {
-  clientId: 'Ov23li2QrljIDmhjRkGU',
+  clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || '',
   // Worker 地址
-  tokenEndpoint: 'https://auth.061129.xyz/token',
+  tokenEndpoint: import.meta.env.VITE_OAUTH_WORKER_URL || '',
   // 授权地址
   authorizeUrl: 'https://github.com/login/oauth/authorize',
   // 回调地址
-  redirectUri: import.meta.env.DEV
-    ? 'http://localhost:5173/callback'
-    : 'https://wallpaper-gallery-studio.061129.xyz/callback',
+  redirectUri: `${appOrigin}/callback`,
   // 请求的权限范围
   scope: 'repo'
 }

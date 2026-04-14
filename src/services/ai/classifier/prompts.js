@@ -722,18 +722,17 @@ export function replaceVariables(template, variables) {
  */
 export function buildVariables(primaryCategory, categoryTree = null) {
   const dynamicSeries = categoryTree?.[primaryCategory]
-  const secondaryCategories =
-    dynamicSeries?.secondary?.length > 0
-      ? dynamicSeries.secondary.map(value => ({ value }))
-      : CATEGORIES[primaryCategory]?.subcategories || []
+  const useDynamicTree = !!dynamicSeries
+  const secondaryCategories = useDynamicTree
+    ? (dynamicSeries.secondary || []).map(value => ({ value }))
+    : CATEGORIES[primaryCategory]?.subcategories || []
   const secondaryList = secondaryCategories.map(cat => cat.value).join('、')
 
   let thirdHints = ''
   secondaryCategories.forEach(cat => {
-    const thirdList =
-      dynamicSeries?.third?.[cat.value]?.length > 0
-        ? dynamicSeries.third[cat.value]
-        : getThirdLevelCategories(primaryCategory, cat.value)
+    const thirdList = useDynamicTree
+      ? dynamicSeries.third?.[cat.value] || []
+      : getThirdLevelCategories(primaryCategory, cat.value)
     thirdHints += `• ${cat.value}：${thirdList.join('、')}\n`
   })
 

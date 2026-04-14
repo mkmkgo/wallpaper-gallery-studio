@@ -1,6 +1,9 @@
 import { CATEGORIES } from '@/config/categories'
 import { SUBCATEGORIES } from '@/config/subcategories'
 import { githubService } from '@/services/github'
+import { resolveAppConfig } from '@/app/config/app-config'
+import { createGitHubUploadWorkspaceRepository } from '@/features/upload-workspace/infrastructure/create-github-upload-workspace-repository'
+import { createCategoryTreeFromManifest } from '@/features/upload-workspace/domain/upload-workspace-manifest'
 import { useConfigStore } from '@/stores/config'
 
 const SERIES_KEYS = ['desktop', 'mobile', 'avatar']
@@ -52,6 +55,24 @@ async function fetchUploadCategoryTree(force = false) {
 
   if (!owner || !repo || !branch) {
     return getFallbackUploadCategoryTree()
+  }
+
+  const repository = createGitHubUploadWorkspaceRepository({
+    githubClient: githubService,
+    getRepositoryConfig: () => configStore.config,
+    getAppConfig: () =>
+      resolveAppConfig({
+        repository: configStore.config
+      })
+  })
+
+  try {
+    const manifest = await repository.getCategoryManifest({ forceRefresh: force })
+    if (manifest) {
+      return createCategoryTreeFromManifest(manifest)
+    }
+  } catch (error) {
+    console.error('[CategoryDirectory] Failed to load manifest:', error)
   }
 
   const fallback = getFallbackUploadCategoryTree()

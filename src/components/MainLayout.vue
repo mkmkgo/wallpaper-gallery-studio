@@ -96,7 +96,7 @@ const authStore = useAuthStore()
 const permissionLabel = computed(() => {
   const map = {
     admin: '管理员',
-    write: '可写',
+    write: '协作者',
     read: '只读',
     none: '无权限'
   }

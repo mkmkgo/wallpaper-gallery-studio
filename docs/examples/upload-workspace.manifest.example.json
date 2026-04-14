@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "updatedAt": "2026-04-04T00:00:00.000Z",
+  "categories": {
+    "desktop": [
+      {
+        "key": "anime",
+        "label": "动漫",
+        "children": [
+          { "key": "eva", "label": "EVA" },
+          { "key": "pokemon", "label": "宝可梦" },
+          { "key": "generic-anime", "label": "二次元" }
+        ]
+      },
+      {
+        "key": "portrait",
+        "label": "人像",
+        "children": [
+          { "key": "fresh", "label": "清新" },
+          { "key": "glamour", "label": "魅力" }
+        ]
+      },
+      {
+        "key": "landscape",
+        "label": "风景",
+        "children": [
+          { "key": "city", "label": "城市" },
+          { "key": "sky", "label": "天空" }
+        ]
+      }
+    ],
+    "mobile": [
+      {
+        "key": "anime",
+        "label": "动漫",
+        "children": [{ "key": "generic-anime", "label": "二次元" }]
+      },
+      {
+        "key": "creative",
+        "label": "创意",
+        "children": [
+          { "key": "text", "label": "文字" },
+          { "key": "abstract", "label": "抽象" }
+        ]
+      }
+    ],
+    "avatar": [
+      {
+        "key": "meme",
+        "label": "表情包",
+        "children": [{ "key": "funny", "label": "搞怪" }]
+      },
+      {
+        "key": "ip",
+        "label": "IP形象",
+        "children": [{ "key": "hello-kitty", "label": "Hello Kitty" }]
+      }
+    ]
+  }
+}

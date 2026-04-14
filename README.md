@@ -69,20 +69,24 @@
 
 ## 🛠️ 技术栈
 
-| 类别 | 技术 |
-| ---- | ---- |
-| 框架 | Vue 3 + Composition API |
-| 构建 | Vite 7 |
-| UI | Element Plus |
-| 状态 | Pinia |
-| 动画 | GSAP |
-| 样式 | SCSS + CSS Variables |
-| AI | ModelScope / Groq / NVIDIA NIM / Cloudflare Workers AI |
-| 规范 | ESLint + Prettier + Husky |
+| 类别 | 技术                                                   |
+| ---- | ------------------------------------------------------ |
+| 框架 | Vue 3 + Composition API                                |
+| 构建 | Vite 7                                                 |
+| UI   | Element Plus                                           |
+| 状态 | Pinia                                                  |
+| 动画 | GSAP                                                   |
+| 样式 | SCSS + CSS Variables                                   |
+| AI   | ModelScope / Groq / NVIDIA NIM / Cloudflare Workers AI |
+| 规范 | ESLint + Prettier + Husky                              |
 
 ## 🚀 快速开始
 
 > **Fork 本项目？** 请先阅读 [自托管部署指南](./docs/self-hosting.md)，了解如何配置自己的图床仓库、GitHub OAuth 和 AI API Key。
+
+> **上传页分类怎么自定义？** 当前上传页优先读取目标仓库中的远端 manifest。请参考 [自托管部署指南](./docs/self-hosting.md#第七步配置远端-manifest) 和示例文件 [upload-workspace.manifest.example.json](./docs/examples/upload-workspace.manifest.example.json)。
+
+> **配置原则**：优先使用环境变量、运行时设置页配置和目标仓库中的远端 manifest；不建议 fork 后直接改源码里的默认值。
 
 ### 前置要求
 
@@ -274,11 +278,11 @@ VITE_NVIDIA_API_KEY=your_nvidia_api_key
 
 针对三个系列各有专用提示词（`classifier/prompts.js`）：
 
-| 系列 | 决策树重点 |
-| ---- | ---------- |
+| 系列    | 决策树重点                                      |
+| ------- | ----------------------------------------------- |
 | Desktop | 人像（魅力/国风/氛围感/清新）、动漫、插画、风景 |
-| Mobile | 人像（魅力/日系/清新/氛围感）、动漫、插画 |
-| Avatar | IP 形象、动漫角色、人像、萌宠、表情包、插画 |
+| Mobile  | 人像（魅力/日系/清新/氛围感）、动漫、插画       |
+| Avatar  | IP 形象、动漫角色、人像、萌宠、表情包、插画     |
 
 ## 🚀 部署到 Cloudflare Pages
 
@@ -301,22 +305,22 @@ wrangler deploy worker/ai-proxy.js --name ai-proxy --compatibility-date 2026-03-
 
 ## 🔒 权限说明
 
-| 权限级别 | 说明 | 可用功能 |
-| -------- | ---- | -------- |
-| 管理员 | 仓库 Owner | 全部功能 + 版本回滚 |
-| 可写 | Collaborator (push) | 上传 + 新建分类 + AI 分析 |
-| 只读 | Collaborator (pull) | 仅浏览 |
-| 无权限 | 无仓库访问权限 | 无法使用 |
+| 权限级别 | 说明                | 可用功能                  |
+| -------- | ------------------- | ------------------------- |
+| 管理员   | 仓库 Owner          | 全部功能 + 版本回滚       |
+| 可写     | Collaborator (push) | 上传 + 新建分类 + AI 分析 |
+| 只读     | Collaborator (pull) | 仅浏览                    |
+| 无权限   | 无仓库访问权限      | 无法使用                  |
 
 ## 📝 本地存储
 
-| Key | 用途 | 过期策略 |
-| --- | ---- | -------- |
-| `auth_token` | GitHub Token | 手动登出清除 |
-| `uploaded_hashes` | 上传文件 Hash（去重） | 30 天 / 最多 500 条 |
-| `upload_history` | 上传历史记录 | 手动清除 |
-| `ai_credentials` | AI 凭证（AES-GCM 加密） | 手动清除 |
-| `ai_current_provider` | 上次选择的 Provider | 持久 |
+| Key                   | 用途                    | 过期策略            |
+| --------------------- | ----------------------- | ------------------- |
+| `auth_token`          | GitHub Token            | 手动登出清除        |
+| `uploaded_hashes`     | 上传文件 Hash（去重）   | 30 天 / 最多 500 条 |
+| `upload_history`      | 上传历史记录            | 手动清除            |
+| `ai_credentials`      | AI 凭证（AES-GCM 加密） | 手动清除            |
+| `ai_current_provider` | 上次选择的 Provider     | 持久                |
 
 ## 📄 License
 
