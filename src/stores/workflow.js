@@ -233,7 +233,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
   async function triggerFrontendDeploy(frontendOwner, frontendRepo) {
     loading.value = true
     try {
-      await githubService.dispatchWorkflowByName(frontendOwner, frontendRepo, 'deploy.yml')
+      const workflows = ['deploy.yml', 'deploy-edgeone.yml']
+      const results = await Promise.allSettled(
+        workflows.map(workflow =>
+          githubService.dispatchWorkflowByName(frontendOwner, frontendRepo, workflow)
+        )
+      )
+
+      const failed = results.filter(r => r.status === 'rejected')
+      if (failed.length > 0) {
+        const errors = failed.map((f, i) => `${workflows[i]}: ${f.reason?.message || f.reason}`).join(', ')
+        throw new Error(`部分工作流触发失败: ${errors}`)
+      }
+
       return true
     } catch (error) {
       console.error('Failed to trigger frontend deploy:', error)
