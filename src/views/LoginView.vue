@@ -263,8 +263,13 @@ const repoUrl = computed(() => {
 
 // GitHub OAuth 登录
 function handleGitHubLogin() {
-  loading.value = true
-  window.location.href = getAuthUrl()
+  try {
+    loading.value = true
+    window.location.href = getAuthUrl()
+  } catch (error) {
+    loading.value = false
+    ElMessage.error(error.message || 'OAuth 配置不完整，请先在设置页完成配置')
+  }
 }
 
 // Token 登录

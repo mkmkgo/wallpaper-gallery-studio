@@ -103,7 +103,7 @@ wrangler login
 
 ### 3.2 创建 OAuth Worker
 
-新建文件 `worker/oauth.js`（参考 [Cloudflare OAuth Worker 示例](https://github.com/nicholasgasior/cloudflare-github-oauth-worker)），核心逻辑：
+新建文件 `worker/oauth.js`（可直接参考本仓库示例 `worker/oauth.example.js`），核心逻辑：
 
 ```js
 export default {

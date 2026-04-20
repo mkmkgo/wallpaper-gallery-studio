@@ -27,6 +27,13 @@
               </el-form-item>
             </div>
 
+            <el-form-item label="OAuth Worker URL">
+              <el-input
+                v-model="formData.oauthWorkerUrl"
+                placeholder="https://your-oauth-worker.your-subdomain.workers.dev"
+              />
+            </el-form-item>
+
             <div class="settings-view__actions">
               <el-button @click="handleReset">重置默认</el-button>
               <el-button type="primary" :loading="validating" @click="handleSave">
@@ -138,7 +145,8 @@ const formData = reactive({
   owner: configStore.config.owner,
   repo: configStore.config.repo,
   branch: configStore.config.branch,
-  clientId: configStore.config.clientId
+  clientId: configStore.config.clientId,
+  oauthWorkerUrl: configStore.config.oauthWorkerUrl
 })
 
 // 权限标签
@@ -175,7 +183,8 @@ async function handleSave() {
       owner: formData.owner,
       repo: formData.repo,
       branch: formData.branch,
-      clientId: formData.clientId
+      clientId: formData.clientId,
+      oauthWorkerUrl: formData.oauthWorkerUrl
     })
 
     const valid = await configStore.validateConfig()
@@ -203,6 +212,7 @@ function handleReset() {
   formData.repo = configStore.config.repo
   formData.branch = configStore.config.branch
   formData.clientId = configStore.config.clientId
+  formData.oauthWorkerUrl = configStore.config.oauthWorkerUrl
   validationResult.value = null
   ElMessage.success('已重置为默认配置')
 }

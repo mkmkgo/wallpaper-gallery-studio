@@ -332,10 +332,15 @@ function getProgressTitle() {
   return '工作流运行中...'
 }
 
-const WORKFLOW_OWNER = import.meta.env.VITE_WORKFLOW_OWNER || ''
-const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || ''
-const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || ''
-const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || ''
+const LEGACY_WORKFLOW_OWNER = 'IT-NuanxinPro'
+const LEGACY_WORKFLOW_REPO = 'wallpaper-gallery-workflow'
+const LEGACY_FRONTEND_OWNER = 'IT-NuanxinPro'
+const LEGACY_FRONTEND_REPO = 'wallpaper-gallery'
+
+const WORKFLOW_OWNER = import.meta.env.VITE_WORKFLOW_OWNER || LEGACY_WORKFLOW_OWNER
+const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || LEGACY_WORKFLOW_REPO
+const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || LEGACY_FRONTEND_OWNER
+const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || LEGACY_FRONTEND_REPO
 
 async function refresh() {
   const { owner, repo, branch } = configStore.config

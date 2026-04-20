@@ -1,10 +1,26 @@
 // GitHub OAuth 配置
 const appOrigin = globalThis.location?.origin || 'http://localhost:5173'
+const CONFIG_STORAGE_KEY = 'wallpaper_admin_config'
+
+function getStoredConfig() {
+  try {
+    const raw = globalThis.localStorage?.getItem(CONFIG_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
 
 export const oauthConfig = {
-  clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || '',
+  get clientId() {
+    const stored = getStoredConfig()
+    return import.meta.env.VITE_GITHUB_CLIENT_ID || stored.clientId || ''
+  },
   // Worker 地址
-  tokenEndpoint: import.meta.env.VITE_OAUTH_WORKER_URL || '',
+  get tokenEndpoint() {
+    const stored = getStoredConfig()
+    return import.meta.env.VITE_OAUTH_WORKER_URL || stored.oauthWorkerUrl || ''
+  },
   // 授权地址
   authorizeUrl: 'https://github.com/login/oauth/authorize',
   // 回调地址
@@ -15,6 +31,10 @@ export const oauthConfig = {
 
 // 生成授权 URL
 export function getAuthUrl() {
+  if (!oauthConfig.clientId) {
+    throw new Error('未配置 GitHub Client ID，请在设置页或环境变量中填写')
+  }
+
   const params = new URLSearchParams({
     client_id: oauthConfig.clientId,
     redirect_uri: oauthConfig.redirectUri,
@@ -40,6 +60,10 @@ export function verifyState(state) {
 
 // 用 code 换 token
 export async function exchangeToken(code) {
+  if (!oauthConfig.tokenEndpoint) {
+    throw new Error('未配置 OAuth Worker URL，请在设置页或环境变量中填写')
+  }
+
   const response = await fetch(oauthConfig.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,8 +71,14 @@ export async function exchangeToken(code) {
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || '获取 Token 失败')
+    let errorMessage = '获取 Token 失败'
+    try {
+      const error = await response.json()
+      errorMessage = error.error || errorMessage
+    } catch {
+      // ignore non-json response body
+    }
+    throw new Error(errorMessage)
   }
 
   const data = await response.json()

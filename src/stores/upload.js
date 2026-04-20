@@ -207,7 +207,9 @@ export const useUploadStore = defineStore('upload', () => {
 
     const modelKey = selectedModel?.key || CLASSIFIER_CONFIG.defaultModel
 
-    const filesNeedingAnalysis = filesToAnalyze.filter(file => !file.aiMetadata)
+    const filesNeedingAnalysis = filesToAnalyze
+      .map(file => files.value.find(candidate => candidate.id === file.id))
+      .filter(file => file && !file.aiMetadata)
 
     if (filesNeedingAnalysis.length === 0) {
       aiAnalyzing.value = false
@@ -217,14 +219,17 @@ export const useUploadStore = defineStore('upload', () => {
 
     aiAnalyzing.value = true
     aiAnalyzingCount.value = filesNeedingAnalysis.length
-    await uploadFileLifecycleService.analyzeFiles(filesNeedingAnalysis, {
-      series: series.value,
-      provider,
-      credentials,
-      modelKey
-    })
-    aiAnalyzingCount.value = 0
-    aiAnalyzing.value = false
+    try {
+      await uploadFileLifecycleService.analyzeFiles(filesNeedingAnalysis, {
+        series: series.value,
+        provider,
+        credentials,
+        modelKey
+      })
+    } finally {
+      aiAnalyzingCount.value = 0
+      aiAnalyzing.value = false
+    }
   }
 
   // 更新单个文件的目标路径
