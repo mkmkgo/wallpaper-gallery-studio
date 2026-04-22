@@ -11,7 +11,8 @@ const DEFAULT_CONFIG = {
   owner: import.meta.env.VITE_GITHUB_REPO_OWNER || '',
   repo: import.meta.env.VITE_GITHUB_REPO_NAME || '',
   branch: import.meta.env.VITE_GITHUB_REPO_BRANCH || 'main',
-  clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || ''
+  clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || '',
+  oauthWorkerUrl: import.meta.env.VITE_OAUTH_WORKER_URL || ''
 }
 
 export const useConfigStore = defineStore('config', () => {
@@ -27,7 +28,8 @@ export const useConfigStore = defineStore('config', () => {
         owner: parsed.owner || DEFAULT_CONFIG.owner,
         repo: parsed.repo || DEFAULT_CONFIG.repo,
         branch: parsed.branch || DEFAULT_CONFIG.branch,
-        clientId: parsed.clientId || DEFAULT_CONFIG.clientId
+        clientId: parsed.clientId || DEFAULT_CONFIG.clientId,
+        oauthWorkerUrl: parsed.oauthWorkerUrl || DEFAULT_CONFIG.oauthWorkerUrl
       }
     } catch {
       return { ...DEFAULT_CONFIG }
