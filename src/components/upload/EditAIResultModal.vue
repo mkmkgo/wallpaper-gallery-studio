@@ -175,13 +175,24 @@
         </div>
       </div>
     </Transition>
+
+    <ConfirmDialog
+      v-model:visible="discardConfirmVisible"
+      title="放弃修改"
+      message="当前修改尚未保存，确定要关闭吗？"
+      type="warning"
+      confirm-button-text="放弃修改"
+      cancel-text="继续编辑"
+      @confirm="handleConfirmDiscard"
+      @cancel="handleCancelDiscard"
+    />
   </Teleport>
 </template>
 
 <script setup>
 import { reactive, computed, watch, ref, onMounted } from 'vue'
-import { ElMessageBox } from 'element-plus'
 import CustomSelect from '@/components/common/CustomSelect.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import {
   getFallbackUploadCategoryTree,
   getUploadCategoryTree
@@ -216,6 +227,7 @@ const categoryData = ref(getFallbackUploadCategoryTree())
 
 const loadingCategories = ref(false)
 const closingPromptVisible = ref(false)
+const discardConfirmVisible = ref(false)
 const initialSnapshot = ref('')
 
 // 从 GitHub 获取分类数据
@@ -401,18 +413,18 @@ async function handleRequestClose() {
   }
 
   closingPromptVisible.value = true
-  try {
-    await ElMessageBox.confirm('当前修改尚未保存，确定要关闭吗？', '放弃修改', {
-      confirmButtonText: '放弃修改',
-      cancelButtonText: '继续编辑',
-      type: 'warning'
-    })
-    emit('close')
-  } catch {
-    // 继续编辑
-  } finally {
-    closingPromptVisible.value = false
-  }
+  discardConfirmVisible.value = true
+}
+
+function handleConfirmDiscard() {
+  discardConfirmVisible.value = false
+  closingPromptVisible.value = false
+  emit('close')
+}
+
+function handleCancelDiscard() {
+  discardConfirmVisible.value = false
+  closingPromptVisible.value = false
 }
 
 // 保存修改
