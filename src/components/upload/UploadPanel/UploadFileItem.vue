@@ -1,7 +1,15 @@
 <template>
-  <el-tooltip placement="top" :disabled="!file.aiMetadata" popper-class="upload-panel__ai-tooltip">
+  <el-tooltip
+    placement="top"
+    :disabled="!file.aiMetadata && !file.aiMetadata?.error"
+    popper-class="upload-panel__ai-tooltip"
+  >
     <template #content>
       <div class="ai-tooltip-content">
+        <div v-if="file.aiMetadata?.error" class="ai-tooltip-section ai-tooltip-section--error">
+          <span class="ai-tooltip-label">⚠️ 分析失败</span>
+          <span class="ai-tooltip-value ai-tooltip-value--error">{{ file.aiMetadata.error }}</span>
+        </div>
         <div v-if="aiFilename" class="ai-tooltip-section">
           <span class="ai-tooltip-label">🤖 AI 文件名</span>
           <span class="ai-tooltip-value">{{ aiFilename }}</span>
@@ -63,6 +71,15 @@
         class="upload-file-item__badge upload-file-item__badge--error"
       >
         !
+      </span>
+
+      <!-- AI 分析失败标记 -->
+      <span
+        v-if="file.status === 'pending' && file.aiMetadata?.error && uploadMode === 'ai'"
+        class="upload-file-item__badge upload-file-item__badge--ai-error"
+        title="AI 分析失败"
+      >
+        ⚠
       </span>
 
       <!-- 删除按钮 -->
@@ -302,6 +319,12 @@ const aiKeywords = computed(() => {
     &--error {
       background: $danger;
       color: $white;
+    }
+
+    &--ai-error {
+      background: rgba(230, 162, 60, 0.9);
+      color: $white;
+      font-size: 10px;
     }
   }
 

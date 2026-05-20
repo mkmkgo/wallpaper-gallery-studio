@@ -5,7 +5,10 @@
 
 import { CATEGORIES } from '@/config/categories'
 import { getThirdLevelCategories } from '@/config/subcategories'
-import { getUploadCategoryTree } from '@/services/upload/category-directory'
+import {
+  getUploadCategoryTree,
+  getFallbackUploadCategoryTree
+} from '@/services/upload/category-directory'
 
 /**
  * 提示词模板配置
@@ -802,7 +805,13 @@ export async function buildPromptWithLatestCategories(
   provider = null,
   options = {}
 ) {
-  const categoryTree = await getUploadCategoryTree(options)
+  let categoryTree = null
+  try {
+    categoryTree = await getUploadCategoryTree(options)
+  } catch (error) {
+    console.error('[Prompts] 获取分类树失败，使用本地回退:', error.message)
+    categoryTree = getFallbackUploadCategoryTree()
+  }
   return buildPrompt(templateId, primaryCategory, customPrompt, provider, categoryTree)
 }
 

@@ -19,7 +19,7 @@ export class ModelScopeProvider extends BaseAIProvider {
       throw new Error('ModelScope credentials are invalid')
     }
 
-    const { apiKey, model } = credentials
+    const { apiKey, model, maxTokens } = credentials
 
     // 确保 base64 不含 data URL 前缀
     let base64Data = imageBase64
@@ -54,7 +54,7 @@ export class ModelScopeProvider extends BaseAIProvider {
             ]
           }
         ],
-        max_tokens: 2048,
+        max_tokens: maxTokens || 2048,
         temperature: 0.2,
         top_p: 0.8
       })

@@ -58,7 +58,8 @@ export async function analyzeImage({
       prompt,
       credentials: {
         ...credentials,
-        model: modelConfig.id
+        model: modelConfig.id,
+        maxTokens: modelConfig.maxTokens
       }
     })
 

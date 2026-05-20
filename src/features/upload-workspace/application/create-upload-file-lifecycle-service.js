@@ -1,9 +1,27 @@
+import { RateLimiter } from '@/utils/rateLimiter'
+
 function buildTargetPath(series, l1, l2 = '') {
   const parts = ['wallpaper', series, l1]
   if (l2) {
     parts.push(l2)
   }
   return parts.join('/')
+}
+
+const PROVIDER_RATE_LIMITS = {
+  groq: { maxRequests: 2, minInterval: 2500, retryAttempts: 3, retryDelay: 4000 },
+  modelscope: { maxRequests: 3, minInterval: 1500, retryAttempts: 3, retryDelay: 3000 },
+  cloudflare: { maxRequests: 2, minInterval: 2000, retryAttempts: 2, retryDelay: 3000 }
+}
+
+function getRateLimiter(provider) {
+  const config = PROVIDER_RATE_LIMITS[provider] || {
+    maxRequests: 2,
+    minInterval: 2000,
+    retryAttempts: 3,
+    retryDelay: 3000
+  }
+  return new RateLimiter(config)
 }
 
 export function createUploadFileLifecycleService({
@@ -148,66 +166,72 @@ export function createUploadFileLifecycleService({
     async analyzeFiles(uploadFiles, { series, provider, credentials, modelKey, concurrency = 3 }) {
       const queue = uploadFiles.filter(file => !file.aiMetadata)
       let analyzedCount = 0
+      let failedCount = 0
 
-      async function processNext() {
-        while (queue.length > 0) {
-          const uploadFile = queue.shift()
-          if (!uploadFile) break
+      const rateLimiter = getRateLimiter(provider)
 
-          try {
-            const result = await classifierAnalyze({
-              file: uploadFile.file,
-              series,
-              providerType: provider,
-              credentials,
-              modelKey
-            })
+      const self = this
 
-            const aiMetadata = {
-              series,
-              category: result.secondary || '通用',
-              subcategory: result.third || '',
-              primary: series,
-              secondary: result.secondary || '通用',
-              third: result.third || '',
-              keywords: result.keywords || [],
-              description: result.description || '',
-              filenameSuggestions: result.filenameSuggestions || [],
-              displayTitle: result.displayTitle || null,
-              confidence: result.confidence || 0,
-              reasoning: result.reasoning || null
-            }
+      for (const uploadFile of queue) {
+        const task = () =>
+          rateLimiter.execute(
+            () =>
+              classifierAnalyze({
+                file: uploadFile.file,
+                series,
+                providerType: provider,
+                credentials,
+                modelKey
+              }),
+            { fileName: uploadFile.name, series }
+          )
 
-            this.applyAiMetadata(uploadFile, aiMetadata)
-          } catch (error) {
-            this.applyAiMetadata(uploadFile, {
-              series,
-              category: '通用',
-              subcategory: '',
-              primary: series,
-              secondary: '通用',
-              third: '',
-              keywords: [],
-              description: '',
-              filenameSuggestions: [],
-              displayTitle: null,
-              confidence: 0,
-              reasoning: null,
-              error: error.message
-            })
+        try {
+          const result = await task()
+          const aiMetadata = {
+            series,
+            category: result.secondary || '通用',
+            subcategory: result.third || '',
+            primary: series,
+            secondary: result.secondary || '通用',
+            third: result.third || '',
+            keywords: result.keywords || [],
+            description: result.description || '',
+            filenameSuggestions: result.filenameSuggestions || [],
+            displayTitle: result.displayTitle || null,
+            confidence: result.confidence || 0,
+            reasoning: result.reasoning || null
           }
 
-          analyzedCount += 1
+          self.applyAiMetadata(uploadFile, aiMetadata)
+        } catch (error) {
+          failedCount++
+          console.error(`[LifecycleService] AI 分析失败: ${uploadFile.name}`, error.message)
+
+          self.applyAiMetadata(uploadFile, {
+            series,
+            category: '通用',
+            subcategory: '',
+            primary: series,
+            secondary: '通用',
+            third: '',
+            keywords: [],
+            description: '',
+            filenameSuggestions: [],
+            displayTitle: null,
+            confidence: 0,
+            reasoning: null,
+            error: error.message
+          })
         }
+
+        analyzedCount++
       }
 
-      const workers = []
-      for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
-        workers.push(processNext.call(this))
-      }
-      await Promise.all(workers)
-
-      return { analyzedCount }
+      console.log(
+        `[LifecycleService] 批量分析完成: 成功 ${analyzedCount - failedCount}, 失败 ${failedCount}`
+      )
+      return { analyzedCount, failedCount }
     }
   }
 }

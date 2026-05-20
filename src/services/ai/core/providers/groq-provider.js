@@ -20,7 +20,7 @@ export class GroqProvider extends BaseAIProvider {
       throw new Error('Groq credentials are invalid')
     }
 
-    const { apiKey, model } = credentials
+    const { apiKey, model, maxTokens } = credentials
 
     // 处理 base64 数据：如果已经包含 data URL 前缀，直接使用；否则添加前缀
     let imageUrl = imageBase64
@@ -54,7 +54,7 @@ export class GroqProvider extends BaseAIProvider {
           }
         ],
         temperature: 1,
-        max_completion_tokens: 1024
+        max_completion_tokens: maxTokens || 1024
       })
     })
 
