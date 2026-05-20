@@ -84,22 +84,9 @@ export const CLASSIFIER_MODELS = {
     speed: 'fast',
     accuracy: 'high',
     cost: 'low',
-    maxTokens: 1024,
+    maxTokens: 8192,
     temperature: 1,
-    recommended: false
-  },
-
-  'groq-llama-4-maverick': {
-    id: 'meta-llama/llama-4-maverick-17b-128e-instruct',
-    name: 'Llama 4 Maverick Vision',
-    provider: AI_PROVIDERS.GROQ,
-    description: 'Groq 超长上下文模型（128K），分析更深入',
-    speed: 'fast',
-    accuracy: 'high',
-    cost: 'low',
-    maxTokens: 2048,
-    temperature: 1,
-    recommended: false
+    recommended: true
   },
 
   // Cloudflare Workers AI
@@ -134,16 +121,9 @@ export const CLASSIFIER_MODELS = {
  * 分类服务默认配置
  */
 export const CLASSIFIER_CONFIG = {
-  // 默认 Provider
   defaultProvider: AI_PROVIDERS.GROQ,
-
-  // 默认模型
   defaultModel: 'groq-llama-4-scout',
-
-  // 默认提示词模板
   defaultPromptTemplate: 'default',
-
-  // 图片处理配置
   image: {
     maxSize: 1024,
     quality: 0.9,
