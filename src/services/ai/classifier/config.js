@@ -121,8 +121,8 @@ export const CLASSIFIER_MODELS = {
  * 分类服务默认配置
  */
 export const CLASSIFIER_CONFIG = {
-  defaultProvider: AI_PROVIDERS.GROQ,
-  defaultModel: 'groq-llama-4-scout',
+  defaultProvider: AI_PROVIDERS.MODELSCOPE,
+  defaultModel: 'modelscope-qwen3-vl-235b',
   defaultPromptTemplate: 'default',
   image: {
     maxSize: 1024,

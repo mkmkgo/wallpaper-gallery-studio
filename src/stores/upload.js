@@ -87,8 +87,8 @@ export const useUploadStore = defineStore('upload', () => {
   // 计算属性
   function getUploadModelList(credentialsStore = useCredentialsStore()) {
     const providerPriority = {
-      [AI_PROVIDERS.GROQ]: 0,
-      [AI_PROVIDERS.MODELSCOPE]: 1
+      [AI_PROVIDERS.MODELSCOPE]: 0,
+      [AI_PROVIDERS.GROQ]: 1
     }
 
     const availableProviderKeys = credentialsStore.availableProviders

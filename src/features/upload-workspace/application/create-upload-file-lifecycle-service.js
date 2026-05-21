@@ -208,6 +208,14 @@ export function createUploadFileLifecycleService({
           failedCount++
           console.error(`[LifecycleService] AI 分析失败: ${uploadFile.name}`, error.message)
 
+          let errorMessage = error.message
+          if (error.message === 'Failed to fetch' || error.message.includes('Failed to fetch')) {
+            errorMessage =
+              '网络请求失败，可能是 AI API 无法访问。请检查网络连接，或切换到 ModelScope（国内可用）'
+          } else if (error.message.includes('429')) {
+            errorMessage = 'API 请求频率超限，请稍后再试'
+          }
+
           self.applyAiMetadata(uploadFile, {
             series,
             category: '通用',
@@ -221,7 +229,7 @@ export function createUploadFileLifecycleService({
             displayTitle: null,
             confidence: 0,
             reasoning: null,
-            error: error.message
+            error: errorMessage
           })
         }
 
