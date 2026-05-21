@@ -443,7 +443,7 @@ async function handleDeployFrontend() {
   }
   try {
     await ElMessageBox.confirm(
-      '确定要重新部署前端吗？\n\n这将：\n• 触发 GitHub Pages 重新构建\n• 更新 CDN 版本号\n• 清除 Cloudflare 缓存\n\n部署过程约需 2-3 分钟',
+      '确定要重新部署前端吗？\n\n这将：\n• 触发 GitHub Pages 重新构建\n• 触发 EdgeOne Pages 部署\n• 触发 EdgeOne CN 部署（国内加速）\n• 清除 Cloudflare 缓存\n\n部署过程约需 2-3 分钟',
       '部署确认',
       {
         confirmButtonText: '确定部署',
