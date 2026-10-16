@@ -282,3 +282,48 @@ pnpm dev
 5. **AI 分析失败时错误信息不可见**
    - 错误记录在 `aiMetadata.error` 中，但 UI 不展示
    - 用户误以为 AI 只是分类不准，实际是分析完全失败
+
+---
+
+## 同步轮次：v1.1.0-custom（2026-10-16）
+
+**同步对象**：上游 tag `v1.1.0`（`888e493`，fork 点 `d11d683` 之后 6 条提交全部合入）
+**沙箱分支**：`sync/upstream-v1.1.0`（未合回 main、未推送，待验证与用户确认）
+**基线指针**：`upstream-base` = `d11d683`
+
+### 本轮冲突处置（4 处）
+
+| 文件 | 解法 |
+| ---- | ---- |
+| `create-upload-file-lifecycle-service.js` | `analyzeFiles` 整体采用上游任务中心架构（task-store 建任务 + `resumeAiTaskQueue` 驱动）；**删除本地 RateLimiter 三件套**（`PROVIDER_RATE_LIMITS`/`getRateLimiter`/import）——上游串行队列 + 2s/4s/8s 指数退避已覆盖 429 场景 |
+| `classifier/config.js` | 整体取上游：默认 Provider ZHIPU + `zhipu-glm-4v-flash`（1024/0.7）；本地 Scout 8192 参数与 ModelScope 默认均被 GLM 决策取代 |
+| `stores/upload.js` | Provider 优先级取上游（ZHIPU:0 / GROQ:1） |
+| `providers/modelscope-provider.js` | `git rm` 确认删除（GLM 决策，合并后全仓零引用） |
+
+### 保留/移植的本地改进
+
+- **友好错误提示移植**：本地「网络失败→建议切换 Provider」「429→请稍后再试」文案移入上游
+  `task-runner.js` 的 `humanizeTaskError()`，wording 更新为「或切换到智谱 GLM（国内可用）」
+- **UploadFileItem.vue 错误 UI**：随合并保留（`aiMetadata.error` 展示）；上游失败流程会置空
+  aiMetadata，该路径变为惰性代码，不报错、不影响任务中心徽章
+- **部署双触发**（`stores/workflow.js` 触发 EdgeOne CN 部署）：上游从未触碰，零冲突保留
+
+### 顺手修的既有红线
+
+- `src/components/upload/WorkflowPanel.vue:335/337`：`LEGACY_WORKFLOW_OWNER`/`LEGACY_FRONTEND_OWNER`
+  由 `IT-NuanxinPro` 改为 `mkmkgo`（env 未配时的回退目标不能是作者账号）
+- `src/services/github.test.js`：测试 fixture 中的 owner 由 `IT-NuanxinPro` 改为 `mkmkgo`
+
+### 自动合并（无冲突，语义已复核）
+
+- `providers/index.js` / `core/index.js` / `credentials.js` / `UploadHeader.vue` /
+  `.env.example`（`VITE_ZHIPU_API_KEY`）/ `package.json`（version 1.1.0）/
+  `UploadPanel.vue`（挂载 AITaskCenter）/ 全部上游新增文件（zhipu-provider、task-runner、
+  task-storage、ai-tasks store、AITaskCenter.vue 等）
+
+### 遗留风险
+
+1. **GLM key 未配置时任务中心静默暂停**（task-runner 设计行为，不报错也不跑）——
+   部署环境需配 `VITE_ZHIPU_API_KEY`（open.bigmodel.cn 申请）
+2. `zhipu-provider.js` 的 `max_tokens` 硬编码 1024——若 GLM 输出被截断需改为从模型配置读取
+3. 上游未合入 main 的大重构 `529f8ef`（上传工作区重建，2619 行）落地后需再同步一轮

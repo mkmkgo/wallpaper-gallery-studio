@@ -332,9 +332,9 @@ function getProgressTitle() {
   return '工作流运行中...'
 }
 
-const LEGACY_WORKFLOW_OWNER = 'IT-NuanxinPro'
+const LEGACY_WORKFLOW_OWNER = 'mkmkgo'
 const LEGACY_WORKFLOW_REPO = 'wallpaper-gallery-workflow'
-const LEGACY_FRONTEND_OWNER = 'IT-NuanxinPro'
+const LEGACY_FRONTEND_OWNER = 'mkmkgo'
 const LEGACY_FRONTEND_REPO = 'wallpaper-gallery'
 
 const WORKFLOW_OWNER = import.meta.env.VITE_WORKFLOW_OWNER || LEGACY_WORKFLOW_OWNER

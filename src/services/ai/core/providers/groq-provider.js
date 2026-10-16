@@ -73,7 +73,8 @@ export class GroqProvider extends BaseAIProvider {
       if (response.status === 403 || response.status === 401) {
         errorMessage = 'Groq API Key 无效或已过期。请检查您的 API Key 是否正确配置。'
       } else if (response.status === 429) {
-        errorMessage = 'API 请求频率超限，请稍后再试。'
+        // 保留原始 errorMessage（含 "try again in Xs"），让 RateLimiter.parseRetryAfter 能解析
+        errorMessage = `API 请求频率超限: ${errorMessage}`
       }
 
       throw new Error(errorMessage)
@@ -84,13 +85,16 @@ export class GroqProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
-    const aiText = data.choices?.[0]?.message?.content || ''
+    let aiText = data.choices?.[0]?.message?.content || ''
 
     if (!aiText) {
       throw new Error('No content in Groq response')
     }
 
-    // 尝试提取 JSON
+    // Qwen3.6 等 reasoning 模型会输出 <think>...</think> 块，先剥离避免干扰 JSON 提取
+    aiText = aiText.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+
+    // 尝试提取 JSON（从最后一个 { 开始匹配，避免 think 残留或前言中的花括号干扰）
     const jsonMatch = aiText.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       throw new Error('No JSON found in Groq response')
