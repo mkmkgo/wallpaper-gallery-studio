@@ -1,5 +1,6 @@
 import { CloudflareProvider } from './cloudflare-provider'
 import { GroqProvider } from './groq-provider'
+import { ModelScopeProvider } from './modelscope-provider'
 import { ZhipuProvider } from './zhipu-provider'
 
 /**
@@ -8,6 +9,7 @@ import { ZhipuProvider } from './zhipu-provider'
 export const AI_PROVIDERS = {
   CLOUDFLARE: 'cloudflare',
   GROQ: 'groq',
+  MODELSCOPE: 'modelscope',
   ZHIPU: 'zhipu'
 }
 
@@ -19,12 +21,13 @@ export class AIProviderFactory {
   static providers = {
     cloudflare: CloudflareProvider,
     groq: GroqProvider,
+    modelscope: ModelScopeProvider,
     zhipu: ZhipuProvider
   }
 
   /**
    * 创建 Provider 实例
-   * @param {string} type - Provider 类型 (cloudflare, groq, zhipu)
+   * @param {string} type - Provider 类型 (cloudflare, groq, modelscope, zhipu)
    * @param {Object} config - Provider 配置
    * @returns {BaseAIProvider}
    */
@@ -72,6 +75,22 @@ export const PROVIDER_DISPLAY = {
     description: 'Groq 超快速 AI 推理服务（免费层每分钟仅 ~1.7 张图）',
     credentialFields: [{ key: 'apiKey', label: 'API Key', type: 'password', required: true }]
   },
+  [AI_PROVIDERS.MODELSCOPE]: {
+    name: 'ModelScope',
+    icon: '🚀',
+    color: '#6C5CE7',
+    description: 'ModelScope 托管的 Qwen VL 视觉模型，国内直连备选（需填 API Key 与模型名）',
+    credentialFields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      {
+        key: 'model',
+        label: '模型名称',
+        type: 'text',
+        required: true,
+        placeholder: 'qwen-vl-max-latest'
+      }
+    ]
+  },
   [AI_PROVIDERS.CLOUDFLARE]: {
     name: 'Cloudflare Workers AI',
     icon: '☁️',
@@ -86,4 +105,4 @@ export const PROVIDER_DISPLAY = {
 }
 
 export { BaseAIProvider } from './base-provider'
-export { CloudflareProvider, GroqProvider, ZhipuProvider }
+export { CloudflareProvider, GroqProvider, ModelScopeProvider, ZhipuProvider }

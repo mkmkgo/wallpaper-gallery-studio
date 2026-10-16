@@ -176,3 +176,17 @@ export function createZhipuRateLimiter() {
     retryDelay: 5000
   })
 }
+
+/**
+ * 创建 ModelScope 视觉请求专用队列。
+ * ModelScope 免费推理 API 并发相对宽松，配置为小并发 + 1.5 秒间隔，
+ * 触发 429 时退避重试。
+ */
+export function createModelScopeRateLimiter() {
+  return new RateLimiter({
+    maxRequests: 3,
+    minInterval: 1500,
+    retryAttempts: 3,
+    retryDelay: 3000
+  })
+}

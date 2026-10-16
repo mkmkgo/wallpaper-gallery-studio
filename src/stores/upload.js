@@ -88,10 +88,11 @@ export const useUploadStore = defineStore('upload', () => {
   function getUploadModelList(credentialsStore = useCredentialsStore()) {
     const providerPriority = {
       [AI_PROVIDERS.ZHIPU]: 0,
-      [AI_PROVIDERS.GROQ]: 1
+      [AI_PROVIDERS.GROQ]: 1,
+      [AI_PROVIDERS.MODELSCOPE]: 2
     }
 
-    const supportedProviders = [AI_PROVIDERS.ZHIPU, AI_PROVIDERS.GROQ]
+    const supportedProviders = [AI_PROVIDERS.ZHIPU, AI_PROVIDERS.GROQ, AI_PROVIDERS.MODELSCOPE]
 
     const availableProviderKeys = credentialsStore.availableProviders
       .map(provider => provider.key)

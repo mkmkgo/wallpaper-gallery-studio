@@ -6,11 +6,12 @@
 import { AIProviderFactory, compressImage, IMAGE_CONFIG } from '../core'
 import { buildPromptWithLatestCategories, validatePrompt } from './prompts'
 import { getModelByKey } from './config'
-import { createGroqRateLimiter } from '@/utils/rateLimiter'
+import { createGroqRateLimiter, createModelScopeRateLimiter } from '@/utils/rateLimiter'
 
 // 为不同 provider 创建速率限制器
 const rateLimiters = {
-  groq: createGroqRateLimiter()
+  groq: createGroqRateLimiter(),
+  modelscope: createModelScopeRateLimiter()
 }
 
 /**

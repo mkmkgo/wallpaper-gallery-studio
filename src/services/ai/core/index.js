@@ -11,6 +11,7 @@ export {
   BaseAIProvider,
   CloudflareProvider,
   GroqProvider,
+  ModelScopeProvider,
   ZhipuProvider
 } from './providers'
 

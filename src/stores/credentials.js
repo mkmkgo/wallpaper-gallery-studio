@@ -16,6 +16,10 @@ const AI_CONFIG = {
 const STORAGE_KEY = 'ai_credentials'
 const ENCRYPTION_KEY = 'ai_credentials_encryption_key'
 
+// ModelScope 默认模型
+// 注意：ModelScope 的 validateCredentials 要求 apiKey 与 model 同时存在，缺 model 会校验失败
+const DEFAULT_MODELSCOPE_MODEL = 'qwen-vl-max-latest'
+
 export const useCredentialsStore = defineStore('credentials', () => {
   // State
   const mode = ref('env') // 'env' | 'manual' - 默认使用环境变量
@@ -30,6 +34,10 @@ export const useCredentialsStore = defineStore('credentials', () => {
 
   // 智谱 GLM 凭证
   const zhipuApiKey = ref('')
+
+  // ModelScope 凭证
+  const modelScopeApiKey = ref('')
+  const modelScopeModel = ref(DEFAULT_MODELSCOPE_MODEL)
 
   const encrypted = ref(true)
   const lastVerified = ref(null)
@@ -61,15 +69,23 @@ export const useCredentialsStore = defineStore('credentials', () => {
     return !!envApiKey
   })
 
+  // 环境变量中是否有 ModelScope 凭证
+  const hasModelScopeEnvCredentials = computed(() => {
+    const envApiKey = import.meta.env.VITE_MODELSCOPE_API_KEY
+    return !!envApiKey
+  })
+
   // 是否有任何凭证
   const hasCredentials = computed(() => {
     return (
       hasCloudflareEnvCredentials.value ||
       hasGroqEnvCredentials.value ||
       hasZhipuEnvCredentials.value ||
+      hasModelScopeEnvCredentials.value ||
       !!(accountId.value && apiToken.value) ||
       !!groqApiKey.value ||
-      !!zhipuApiKey.value
+      !!zhipuApiKey.value ||
+      !!modelScopeApiKey.value
     )
   })
 
@@ -119,6 +135,24 @@ export const useCredentialsStore = defineStore('credentials', () => {
     }
   })
 
+  // 获取 ModelScope 凭证
+  // 注意：ModelScope 校验要求 apiKey 与 model 同时存在，因此这里必须带上 model
+  const modelScopeCredentials = computed(() => {
+    // 优先使用环境变量
+    if (hasModelScopeEnvCredentials.value) {
+      return {
+        apiKey: import.meta.env.VITE_MODELSCOPE_API_KEY,
+        model:
+          import.meta.env.VITE_MODELSCOPE_MODEL || modelScopeModel.value || DEFAULT_MODELSCOPE_MODEL
+      }
+    }
+    // 否则使用手动输入的
+    return {
+      apiKey: modelScopeApiKey.value,
+      model: modelScopeModel.value || DEFAULT_MODELSCOPE_MODEL
+    }
+  })
+
   // 根据 Provider 获取凭证
   function getCredentialsByProvider(provider) {
     if (provider === AI_PROVIDERS.CLOUDFLARE) {
@@ -127,6 +161,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
       return groqCredentials.value
     } else if (provider === AI_PROVIDERS.ZHIPU) {
       return zhipuCredentials.value
+    } else if (provider === AI_PROVIDERS.MODELSCOPE) {
+      return modelScopeCredentials.value
     }
     return null
   }
@@ -135,7 +171,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
     if (
       hasCloudflareEnvCredentials.value ||
       hasGroqEnvCredentials.value ||
-      hasZhipuEnvCredentials.value
+      hasZhipuEnvCredentials.value ||
+      hasModelScopeEnvCredentials.value
     ) {
       return '环境变量'
     }
@@ -149,6 +186,9 @@ export const useCredentialsStore = defineStore('credentials', () => {
     }
     if (hasGroqEnvCredentials.value || groqApiKey.value) {
       return AI_PROVIDERS.GROQ
+    }
+    if (hasModelScopeEnvCredentials.value || modelScopeApiKey.value) {
+      return AI_PROVIDERS.MODELSCOPE
     }
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
       return AI_PROVIDERS.CLOUDFLARE
@@ -173,6 +213,14 @@ export const useCredentialsStore = defineStore('credentials', () => {
         name: 'Groq AI',
         icon: '⚡',
         source: hasGroqEnvCredentials.value ? '环境变量' : '手动配置'
+      })
+    }
+    if (hasModelScopeEnvCredentials.value || modelScopeApiKey.value) {
+      providers.push({
+        key: AI_PROVIDERS.MODELSCOPE,
+        name: 'ModelScope',
+        icon: '🚀',
+        source: hasModelScopeEnvCredentials.value ? '环境变量' : '手动配置'
       })
     }
     if (hasCloudflareEnvCredentials.value || (accountId.value && apiToken.value)) {
@@ -315,6 +363,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
    * @param {string} credentials.apiToken - Cloudflare API Token
    * @param {string} credentials.groqApiKey - Groq API Key
    * @param {string} credentials.zhipuApiKey - 智谱 GLM API Key
+   * @param {string} credentials.modelScopeApiKey - ModelScope API Key
+   * @param {string} credentials.modelScopeModel - ModelScope 模型名称
    */
   async function saveCredentials(credentials) {
     try {
@@ -322,6 +372,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
       if (credentials.apiToken) apiToken.value = credentials.apiToken
       if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
       if (credentials.zhipuApiKey) zhipuApiKey.value = credentials.zhipuApiKey
+      if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
+      if (credentials.modelScopeModel) modelScopeModel.value = credentials.modelScopeModel
 
       const encryptedData = {}
 
@@ -336,6 +388,12 @@ export const useCredentialsStore = defineStore('credentials', () => {
       }
       if (credentials.zhipuApiKey) {
         encryptedData.zhipuApiKey = await encryptData(credentials.zhipuApiKey)
+      }
+      if (credentials.modelScopeApiKey) {
+        encryptedData.modelScopeApiKey = await encryptData(credentials.modelScopeApiKey)
+      }
+      if (credentials.modelScopeModel) {
+        encryptedData.modelScopeModel = await encryptData(credentials.modelScopeModel)
       }
 
       const encryptedCredentials = {
@@ -373,6 +431,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
       const envWorkerUrl = import.meta.env.VITE_WORKER_URL
       const envGroqApiKey = import.meta.env.VITE_GROQ_API_KEY
       const envZhipuApiKey = import.meta.env.VITE_ZHIPU_API_KEY
+      const envModelScopeApiKey = import.meta.env.VITE_MODELSCOPE_API_KEY
+      const envModelScopeModel = import.meta.env.VITE_MODELSCOPE_MODEL
 
       if (envCloudflareAccountId && envCloudflareApiToken) {
         console.log('[Credentials] Loading Cloudflare credentials from environment')
@@ -394,11 +454,21 @@ export const useCredentialsStore = defineStore('credentials', () => {
         mode.value = 'env'
       }
 
+      if (envModelScopeApiKey) {
+        console.log('[Credentials] Loading ModelScope credentials from environment')
+        modelScopeApiKey.value = envModelScopeApiKey
+        if (envModelScopeModel) {
+          modelScopeModel.value = envModelScopeModel
+        }
+        mode.value = 'env'
+      }
+
       // 如果环境变量中有凭证，直接返回
       if (
         hasCloudflareEnvCredentials.value ||
         hasGroqEnvCredentials.value ||
-        hasZhipuEnvCredentials.value
+        hasZhipuEnvCredentials.value ||
+        hasModelScopeEnvCredentials.value
       ) {
         encrypted.value = false
         loaded.value = true
@@ -430,12 +500,20 @@ export const useCredentialsStore = defineStore('credentials', () => {
         if (credentials.zhipuApiKey) {
           zhipuApiKey.value = await decryptData(credentials.zhipuApiKey)
         }
+        if (credentials.modelScopeApiKey) {
+          modelScopeApiKey.value = await decryptData(credentials.modelScopeApiKey)
+        }
+        if (credentials.modelScopeModel) {
+          modelScopeModel.value = await decryptData(credentials.modelScopeModel)
+        }
       } else {
         // 兼容旧版本未加密的数据
         if (credentials.accountId) accountId.value = credentials.accountId
         if (credentials.apiToken) apiToken.value = credentials.apiToken
         if (credentials.groqApiKey) groqApiKey.value = credentials.groqApiKey
         if (credentials.zhipuApiKey) zhipuApiKey.value = credentials.zhipuApiKey
+        if (credentials.modelScopeApiKey) modelScopeApiKey.value = credentials.modelScopeApiKey
+        if (credentials.modelScopeModel) modelScopeModel.value = credentials.modelScopeModel
       }
 
       mode.value = 'manual'
@@ -535,6 +613,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
     apiToken.value = ''
     groqApiKey.value = ''
     zhipuApiKey.value = ''
+    modelScopeApiKey.value = ''
+    modelScopeModel.value = DEFAULT_MODELSCOPE_MODEL
     mode.value = 'manual'
     lastVerified.value = null
     loaded.value = false
@@ -570,6 +650,8 @@ export const useCredentialsStore = defineStore('credentials', () => {
     apiToken,
     groqApiKey,
     zhipuApiKey,
+    modelScopeApiKey,
+    modelScopeModel,
     workerUrl,
     encrypted,
     lastVerified,
@@ -581,9 +663,11 @@ export const useCredentialsStore = defineStore('credentials', () => {
     hasCloudflareEnvCredentials,
     hasGroqEnvCredentials,
     hasZhipuEnvCredentials,
+    hasModelScopeEnvCredentials,
     cloudflareCredentials,
     groqCredentials,
     zhipuCredentials,
+    modelScopeCredentials,
     credentialsSource,
     defaultProvider,
     availableProviders,

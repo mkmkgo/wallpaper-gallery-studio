@@ -199,7 +199,9 @@
                               ? 'Groq'
                               : model.provider === 'zhipu'
                                 ? '智谱 GLM'
-                                : 'Cloudflare'
+                                : model.provider === 'modelscope'
+                                  ? 'ModelScope'
+                                  : 'Cloudflare'
                           }}
                         </span>
                       </button>

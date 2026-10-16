@@ -87,6 +87,7 @@ const visibleTasks = computed(() =>
 function getProviderLabel(provider) {
   if (provider === 'zhipu') return '智谱 GLM'
   if (provider === 'groq') return 'Groq'
+  if (provider === 'modelscope') return 'ModelScope'
   return provider || 'AI'
 }
 

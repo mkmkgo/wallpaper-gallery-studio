@@ -79,6 +79,35 @@ export const CLASSIFIER_MODELS = {
     maxTokens: 2048,
     temperature: 0.3,
     recommended: false
+  },
+
+  // ModelScope（国内备选，Qwen VL 系列）
+  // 注意：ModelScope 的 validateCredentials 要求 apiKey 与 model 同时存在，
+  // 因此 provider 为 modelscope 的模型 id 必须原样传给 credentials.model
+  'modelscope-qwen-vl-max-latest': {
+    id: 'qwen-vl-max-latest',
+    name: 'Qwen VL Max (ModelScope)',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'ModelScope 托管的 Qwen VL Max 视觉模型，国内直连备选',
+    speed: 'medium',
+    accuracy: 'high',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.7,
+    recommended: false
+  },
+
+  'modelscope-qwen-vl-plus-latest': {
+    id: 'qwen-vl-plus-latest',
+    name: 'Qwen VL Plus (ModelScope)',
+    provider: AI_PROVIDERS.MODELSCOPE,
+    description: 'ModelScope 托管的 Qwen VL Plus 视觉模型，速度更快',
+    speed: 'fast',
+    accuracy: 'medium',
+    cost: 'low',
+    maxTokens: 2048,
+    temperature: 0.7,
+    recommended: false
   }
 }
 
