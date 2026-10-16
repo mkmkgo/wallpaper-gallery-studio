@@ -26,7 +26,9 @@ export const useAiTasksStore = defineStore('ai-tasks', () => {
   const initialized = ref(false)
   const persistenceWarning = ref('')
 
-  const queuedTasks = computed(() => tasks.value.filter(task => task.status === AI_TASK_STATUS.QUEUED))
+  const queuedTasks = computed(() =>
+    tasks.value.filter(task => task.status === AI_TASK_STATUS.QUEUED)
+  )
   const activeTasks = computed(() =>
     tasks.value.filter(task =>
       [AI_TASK_STATUS.ANALYZING, AI_TASK_STATUS.RETRYING].includes(task.status)
@@ -35,7 +37,9 @@ export const useAiTasksStore = defineStore('ai-tasks', () => {
   const completedTasks = computed(() =>
     tasks.value.filter(task => task.status === AI_TASK_STATUS.COMPLETED)
   )
-  const failedTasks = computed(() => tasks.value.filter(task => task.status === AI_TASK_STATUS.FAILED))
+  const failedTasks = computed(() =>
+    tasks.value.filter(task => task.status === AI_TASK_STATUS.FAILED)
+  )
   const pendingCount = computed(() => queuedTasks.value.length + activeTasks.value.length)
 
   function sortTasks() {

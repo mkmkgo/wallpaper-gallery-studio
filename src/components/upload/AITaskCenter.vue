@@ -26,11 +26,7 @@
     </div>
 
     <div v-if="visibleTasks.length > 0" class="ai-task-center__list">
-      <article
-        v-for="(task, index) in visibleTasks"
-        :key="task.id"
-        class="ai-task-center__item"
-      >
+      <article v-for="(task, index) in visibleTasks" :key="task.id" class="ai-task-center__item">
         <div class="ai-task-center__index">{{ index + 1 }}</div>
         <div class="ai-task-center__body">
           <div class="ai-task-center__name" :title="task.fileName">{{ task.fileName }}</div>

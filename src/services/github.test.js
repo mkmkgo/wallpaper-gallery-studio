@@ -49,14 +49,7 @@ describe('GitHubService.uploadImage', () => {
       .mockResolvedValueOnce({ content: { path: 'wallpaper/desktop/7713_wallhaven壁纸_' } })
 
     await expect(
-      githubService.uploadImage(
-        'mkmkgo',
-        'nuanXinProPic',
-        IMAGE_PATH,
-        {},
-        'Upload test',
-        'main'
-      )
+      githubService.uploadImage('mkmkgo', 'nuanXinProPic', IMAGE_PATH, {}, 'Upload test', 'main')
     ).rejects.toMatchObject({
       type: 'UPLOAD_PATH_MISMATCH',
       expectedPath: IMAGE_PATH

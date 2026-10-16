@@ -511,16 +511,18 @@ const renderedMarkdown = computed(() => {
 // 格式化文件名 (仅电脑壁纸)
 const formattedFilenames = computed(() => {
   if (props.result.primary !== 'desktop') return []
-  
-  return props.result.filenameSuggestions?.map(filename => {
-    // 获取文件名和扩展名
-    const lastDotIndex = filename.lastIndexOf('.')
-    const nameWithoutExt = lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename
-    
-    // 格式: {secondary}--{third}_{originalName}.png
-    const formattedName = `${props.result.secondary}--${props.result.third}_${nameWithoutExt}.png`
-    return formattedName
-  }) || []
+
+  return (
+    props.result.filenameSuggestions?.map(filename => {
+      // 获取文件名和扩展名
+      const lastDotIndex = filename.lastIndexOf('.')
+      const nameWithoutExt = lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename
+
+      // 格式: {secondary}--{third}_{originalName}.png
+      const formattedName = `${props.result.secondary}--${props.result.third}_${nameWithoutExt}.png`
+      return formattedName
+    }) || []
+  )
 })
 
 function formatTime(ts) {
