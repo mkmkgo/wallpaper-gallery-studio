@@ -1,5 +1,4 @@
-import { RateLimiter } from '@/utils/rateLimiter'
-
+import { useAiTasksStore } from '@/stores/ai-tasks'
 function buildTargetPath(series, l1, l2 = '') {
   const parts = ['wallpaper', series, l1]
   if (l2) {
@@ -8,25 +7,8 @@ function buildTargetPath(series, l1, l2 = '') {
   return parts.join('/')
 }
 
-const PROVIDER_RATE_LIMITS = {
-  groq: { maxRequests: 2, minInterval: 2500, retryAttempts: 3, retryDelay: 4000 },
-  modelscope: { maxRequests: 3, minInterval: 1500, retryAttempts: 3, retryDelay: 3000 },
-  cloudflare: { maxRequests: 2, minInterval: 2000, retryAttempts: 2, retryDelay: 3000 }
-}
-
-function getRateLimiter(provider) {
-  const config = PROVIDER_RATE_LIMITS[provider] || {
-    maxRequests: 2,
-    minInterval: 2000,
-    retryAttempts: 3,
-    retryDelay: 3000
-  }
-  return new RateLimiter(config)
-}
-
 export function createUploadFileLifecycleService({
   sessionCache,
-  classifierAnalyze,
   imageCompressor,
   previewManager,
   hashComputer
@@ -91,7 +73,10 @@ export function createUploadFileLifecycleService({
           targetSeries: target.series,
           targetL1: target.l1,
           targetL2: target.l2,
-          aiMetadata: cachedAiMetadata
+          aiMetadata: cachedAiMetadata,
+          aiTaskId: null,
+          aiTaskStatus: cachedAiMetadata ? 'completed' : null,
+          aiTaskAttempts: 0
         })
       }
 
@@ -113,7 +98,7 @@ export function createUploadFileLifecycleService({
       const category = aiMetadata.category || aiMetadata.secondary
       const subcategory = aiMetadata.subcategory || aiMetadata.third || ''
 
-      if (aiSeries && category) {
+      if (aiSeries && category && !aiMetadata.error) {
         uploadFile.targetSeries = aiSeries
         uploadFile.targetL1 = category
         uploadFile.targetL2 = subcategory
@@ -163,83 +148,31 @@ export function createUploadFileLifecycleService({
       return pendingFiles.length
     },
 
-    async analyzeFiles(uploadFiles, { series, provider, credentials, modelKey, concurrency = 3 }) {
+    async analyzeFiles(uploadFiles, { series, provider, modelKey }) {
+      const taskStore = useAiTasksStore()
+      await taskStore.initialize()
+
       const queue = uploadFiles.filter(file => !file.aiMetadata)
-      let analyzedCount = 0
-      let failedCount = 0
-
-      const rateLimiter = getRateLimiter(provider)
-
-      const self = this
-
       for (const uploadFile of queue) {
-        const task = () =>
-          rateLimiter.execute(
-            () =>
-              classifierAnalyze({
-                file: uploadFile.file,
-                series,
-                providerType: provider,
-                credentials,
-                modelKey
-              }),
-            { fileName: uploadFile.name, series }
-          )
-
-        try {
-          const result = await task()
-          const aiMetadata = {
+        let task = taskStore.getTaskByFileId(uploadFile.id)
+        if (!task) {
+          task = await taskStore.createTask({
+            fileId: uploadFile.id,
+            file: uploadFile.file,
             series,
-            category: result.secondary || '通用',
-            subcategory: result.third || '',
-            primary: series,
-            secondary: result.secondary || '通用',
-            third: result.third || '',
-            keywords: result.keywords || [],
-            description: result.description || '',
-            filenameSuggestions: result.filenameSuggestions || [],
-            displayTitle: result.displayTitle || null,
-            confidence: result.confidence || 0,
-            reasoning: result.reasoning || null
-          }
-
-          self.applyAiMetadata(uploadFile, aiMetadata)
-        } catch (error) {
-          failedCount++
-          console.error(`[LifecycleService] AI 分析失败: ${uploadFile.name}`, error.message)
-
-          let errorMessage = error.message
-          if (error.message === 'Failed to fetch' || error.message.includes('Failed to fetch')) {
-            errorMessage =
-              '网络请求失败，可能是 AI API 无法访问。请检查网络连接，或切换到 ModelScope（国内可用）'
-          } else if (error.message.includes('429')) {
-            errorMessage = 'API 请求频率超限，请稍后再试'
-          }
-
-          self.applyAiMetadata(uploadFile, {
-            series,
-            category: '通用',
-            subcategory: '',
-            primary: series,
-            secondary: '通用',
-            third: '',
-            keywords: [],
-            description: '',
-            filenameSuggestions: [],
-            displayTitle: null,
-            confidence: 0,
-            reasoning: null,
-            error: errorMessage
+            provider,
+            modelKey
           })
         }
 
-        analyzedCount++
+        uploadFile.aiTaskId = task.id
+        uploadFile.aiTaskStatus = task.status
+        uploadFile.aiTaskAttempts = task.attempts || 0
       }
 
-      console.log(
-        `[LifecycleService] 批量分析完成: 成功 ${analyzedCount - failedCount}, 失败 ${failedCount}`
-      )
-      return { analyzedCount, failedCount }
+      const { resumeAiTaskQueue } = await import('@/services/ai/task-runner')
+      await resumeAiTaskQueue()
+      return { analyzedCount: queue.length }
     }
   }
 }

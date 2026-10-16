@@ -209,7 +209,7 @@ class ImageCompressor {
     // 需要缩放：优先按像素总数缩放，保持宽高比
     const pixelRatio = Math.sqrt(maxPixels / currentPixels)
     const sizeRatio = Math.min(maxWidth / width, maxHeight / height)
-    
+
     // 选择更保守的缩放比例（保持更高质量）
     const ratio = Math.max(pixelRatio, sizeRatio)
 

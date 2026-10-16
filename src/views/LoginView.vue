@@ -181,7 +181,7 @@
 
                   <a
                     class="login__create-token"
-                    href="https://github.com/settings/tokens/new?scopes=repo&description=NuanXin%20Gallery"
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=Wallpaper%20Gallery%20Studio"
                     target="_blank"
                   >
                     还没有 Token？点击创建 →
