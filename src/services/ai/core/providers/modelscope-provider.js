@@ -7,7 +7,11 @@ import { BaseAIProvider } from './base-provider'
 export class ModelScopeProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
-    this.baseUrl = config.baseUrl || 'https://api-inference.modelscope.cn/v1'
+    // [LOCAL] 支持 VITE_MODELSCOPE_BASE_URL 走自建 Worker 代理，绕开浏览器直连的 CORS 拦截
+    this.baseUrl =
+      config.baseUrl ||
+      import.meta.env.VITE_MODELSCOPE_BASE_URL ||
+      'https://api-inference.modelscope.cn/v1'
   }
 
   validateCredentials(credentials) {

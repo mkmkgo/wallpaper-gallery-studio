@@ -7,8 +7,10 @@ import { BaseAIProvider } from './base-provider'
 export class GroqProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
-    // Groq 官方 API 支持 CORS，本地和线上都直连
-    this.baseUrl = config.baseUrl || 'https://api.groq.com/openai/v1'
+    // Groq 官方 API
+    // [LOCAL] 支持 VITE_GROQ_BASE_URL 走自建 Worker 代理，绕开浏览器直连的 CORS 拦截
+    this.baseUrl =
+      config.baseUrl || import.meta.env.VITE_GROQ_BASE_URL || 'https://api.groq.com/openai/v1'
   }
 
   validateCredentials(credentials) {

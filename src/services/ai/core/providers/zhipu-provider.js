@@ -11,8 +11,12 @@ const zhipuRateLimiter = createZhipuRateLimiter()
 export class ZhipuProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
-    // 智谱 BigModel 官方 API，OpenAI 兼容协议，支持 CORS
-    this.baseUrl = config.baseUrl || 'https://open.bigmodel.cn/api/paas/v4'
+    // 智谱 BigModel 官方 API，OpenAI 兼容协议
+    // [LOCAL] 支持 VITE_ZHIPU_BASE_URL 走自建 Worker 代理，绕开浏览器直连的 CORS 拦截
+    this.baseUrl =
+      config.baseUrl ||
+      import.meta.env.VITE_ZHIPU_BASE_URL ||
+      'https://open.bigmodel.cn/api/paas/v4'
   }
 
   validateCredentials(credentials) {
