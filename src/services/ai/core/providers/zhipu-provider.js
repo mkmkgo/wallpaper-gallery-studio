@@ -15,13 +15,29 @@ const zhipuRateLimiter = createZhipuRateLimiter()
  * 见 worker/ai-cors-proxy.js。
  * 需要改回直连时，用环境变量 VITE_ZHIPU_BASE_URL 覆盖即可。
  */
+const PROXY_HOST = 'https://wallpaper-ai-proxy.1109008002.workers.dev'
 const DEFAULT_ZHIPU_BASE_URL = 'https://wallpaper-ai-proxy.1109008002.workers.dev/zhipu'
+
+/**
+ * 归一化代理地址：确保以 /zhipu 结尾。
+ * Worker 靠 URL 首段路径识别厂商，少了 /zhipu 会返回「未知的 provider」。
+ * 环境变量填成裸 host（...workers.dev）或未填时，这里自动补齐。
+ */
+function normalizeZhipuBase(raw) {
+  const trimmed = String(raw || '')
+    .trim()
+    .replace(/\/+$/, '')
+  if (!trimmed || trimmed === PROXY_HOST) {
+    return DEFAULT_ZHIPU_BASE_URL
+  }
+  return trimmed
+}
 
 export class ZhipuProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
     // 智谱 BigModel 官方 API，OpenAI 兼容协议
-    this.baseUrl = config.baseUrl || import.meta.env.VITE_ZHIPU_BASE_URL || DEFAULT_ZHIPU_BASE_URL
+    this.baseUrl = config.baseUrl || normalizeZhipuBase(import.meta.env.VITE_ZHIPU_BASE_URL)
   }
 
   validateCredentials(credentials) {
