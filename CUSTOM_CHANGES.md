@@ -293,12 +293,12 @@ pnpm dev
 
 ### 本轮冲突处置（4 处）
 
-| 文件 | 解法 |
-| ---- | ---- |
+| 文件                                      | 解法                                                                                                                                                                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `create-upload-file-lifecycle-service.js` | `analyzeFiles` 整体采用上游任务中心架构（task-store 建任务 + `resumeAiTaskQueue` 驱动）；**删除本地 RateLimiter 三件套**（`PROVIDER_RATE_LIMITS`/`getRateLimiter`/import）——上游串行队列 + 2s/4s/8s 指数退避已覆盖 429 场景 |
-| `classifier/config.js` | 整体取上游：默认 Provider ZHIPU + `zhipu-glm-4v-flash`（1024/0.7）；本地 Scout 8192 参数与 ModelScope 默认均被 GLM 决策取代 |
-| `stores/upload.js` | Provider 优先级取上游（ZHIPU:0 / GROQ:1） |
-| `providers/modelscope-provider.js` | `git rm` 确认删除（GLM 决策，合并后全仓零引用） |
+| `classifier/config.js`                    | 整体取上游：默认 Provider ZHIPU + `zhipu-glm-4v-flash`（1024/0.7）；本地 Scout 8192 参数与 ModelScope 默认均被 GLM 决策取代                                                                                                 |
+| `stores/upload.js`                        | Provider 优先级取上游（ZHIPU:0 / GROQ:1）                                                                                                                                                                                   |
+| `providers/modelscope-provider.js`        | `git rm` 确认删除（GLM 决策，合并后全仓零引用）                                                                                                                                                                             |
 
 ### 保留/移植的本地改进
 
@@ -327,3 +327,65 @@ pnpm dev
    部署环境需配 `VITE_ZHIPU_API_KEY`（open.bigmodel.cn 申请）
 2. `zhipu-provider.js` 的 `max_tokens` 硬编码 1024——若 GLM 输出被截断需改为从模型配置读取
 3. 上游未合入 main 的大重构 `529f8ef`（上传工作区重建，2619 行）落地后需再同步一轮
+
+---
+
+## 同步轮次追加：AI CORS 代理（2026-10-22）
+
+### 背景与根因
+
+浏览器直连 `https://open.bigmodel.cn` 被 CORS 拦截：
+
+```
+Access to fetch at 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+from origin 'https://wall.pj365.qzz.io' has been blocked by CORS policy:
+No 'Access-Control-Allow-Origin' header is present
+```
+
+但**服务端 curl 用同一个 Origin 请求，智谱每次都正常返回 `access-control-allow-origin`**。
+即：智谱侧放行、浏览器侧拿不到 → 是「浏览器→智谱」链路上的中间环节拦截，
+**改前端无法根治**，只能让请求不再跨域。
+
+### 方案
+
+链路改为 **浏览器 → 自建 Cloudflare Worker（自带 CORS 头）→ 厂商接口**，
+第二段是服务端到服务端，不存在跨域。
+
+Worker 地址：`https://wallpaper-ai-proxy.1109008002.workers.dev`（路径前缀 `/zhipu`）
+
+### 改动清单
+
+| 文件                               | 类型                     | 同步冲突风险             |
+| ---------------------------------- | ------------------------ | ------------------------ |
+| `worker/ai-cors-proxy.js`          | 🆕 **新建**              | **零**（上游无同名文件） |
+| `providers/zhipu-provider.js`      | 改（标 `[LOCAL]`）       | 低（1 处，构造函数内）   |
+| `providers/groq-provider.js`       | 改（标 `[LOCAL]`，可选） | 低                       |
+| `providers/modelscope-provider.js` | 改（标 `[LOCAL]`，可选） | 低                       |
+| `.env.example`                     | 改（补充说明）           | 低                       |
+
+### 关键实现细节（上游合并时需保留）
+
+1. **`worker/ai-cors-proxy.js`**
+   - 多厂商透传：`/zhipu/*`→open.bigmodel.cn、`/groq/*`→api.groq.com、`/modelscope/*`→api-inference.modelscope.cn
+   - 处理 OPTIONS 预检，**必须放行 `authorization, content-type`**（否则预检仍失败）
+   - 透传 `Authorization` 头，Worker **不存储任何密钥**
+2. **`zhipu-provider.js`**
+   - 默认走代理：`DEFAULT_ZHIPU_BASE_URL`
+   - `normalizeZhipuBase()` **自动补 `/zhipu` 后缀**——Worker 靠 URL 首段路径识别厂商，
+     少了后缀会返回「未知的 provider」。对环境变量填错（填成裸 host）容错。
+   - 优先级：`config.baseUrl` → `VITE_ZHIPU_BASE_URL` → 代理默认值
+3. 想改回直连：设 `VITE_ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4`
+
+### 同步上游时的处理
+
+- `worker/ai-cors-proxy.js` 是**全新文件**，上游永远不会碰 → 直接保留
+- 三个 provider 的改动都在**构造函数内、带 `[LOCAL]` 注释** →
+  若上游也改了这几行，冲突范围就是那 1~3 行，手工保留 `[LOCAL]` 分支即可
+- 判据：`git diff upstream-base..main` 可列出全部自有补丁
+
+### 已验证
+
+- Node 22 实跑 Worker：预检 204+`ACAO:*`；假 key 转发拿到智谱
+  `401「令牌已过期或验证不正确」`且带 CORS 头；三家 URL 映射正确
+- 三种环境变量场景（不填 / 填裸地址 / 填对）构建产物均含 `workers.dev/zhipu`
+- `pnpm build` 通过；`dist` 内已无 `open.bigmodel.cn` 硬编码
