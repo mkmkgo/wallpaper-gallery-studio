@@ -8,15 +8,20 @@ const zhipuRateLimiter = createZhipuRateLimiter()
  * 使用智谱 BigModel 平台的 GLM-4V 视觉模型进行图片分析
  * 免费模型：glm-4v-flash（直接回答）、glm-4.1v-thinking-flash（带推理）
  */
+/**
+ * [LOCAL] 自建 CORS 代理地址
+ * 浏览器直连 https://open.bigmodel.cn 会被 CORS 拦截（服务端 curl 正常、
+ * 浏览器拿不到 Access-Control-Allow-Origin），必须经自建 Worker 中转。
+ * 见 worker/ai-cors-proxy.js。
+ * 需要改回直连时，用环境变量 VITE_ZHIPU_BASE_URL 覆盖即可。
+ */
+const DEFAULT_ZHIPU_BASE_URL = 'https://wallpaper-ai-proxy.1109008002.workers.dev/zhipu'
+
 export class ZhipuProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
     // 智谱 BigModel 官方 API，OpenAI 兼容协议
-    // [LOCAL] 支持 VITE_ZHIPU_BASE_URL 走自建 Worker 代理，绕开浏览器直连的 CORS 拦截
-    this.baseUrl =
-      config.baseUrl ||
-      import.meta.env.VITE_ZHIPU_BASE_URL ||
-      'https://open.bigmodel.cn/api/paas/v4'
+    this.baseUrl = config.baseUrl || import.meta.env.VITE_ZHIPU_BASE_URL || DEFAULT_ZHIPU_BASE_URL
   }
 
   validateCredentials(credentials) {
