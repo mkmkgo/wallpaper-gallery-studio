@@ -167,6 +167,7 @@
           >
             <WorkflowPanel
               :collapsed="activeSidebarPanel !== 'workflow'"
+              :current-series="series"
               class="upload-view__workflow"
               @toggle="openSidebarPanel('workflow')"
             />
@@ -251,6 +252,7 @@ import EditAIResultModal from '@/components/upload/EditAIResultModal.vue'
 import { githubService } from '@/services/github'
 import { localStorageService } from '@/services/localStorage'
 import { clearUploadCategoryTreeCache } from '@/services/upload/category-directory'
+import { resolveSeriesRepoForConfig } from '@/app/config/app-config'
 import { useConfigStore } from '@/stores/config'
 import { useUploadStore } from '@/stores/upload'
 import { useAuthStore } from '@/stores/auth'
@@ -389,7 +391,8 @@ function clearCategoryCaches() {
 }
 
 async function waitForDirectorySync(path, { shouldExist, attempts = 8, delay = 700 } = {}) {
-  const { owner, repo, branch } = configStore.config
+  const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+  const { branch } = configStore.config
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
@@ -442,7 +445,8 @@ async function loadRootCategories(forceRefresh = false) {
 
   loading.value = true
   try {
-    const { owner, repo, branch } = configStore.config
+    const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+    const { branch } = configStore.config
     console.log('[loadRootCategories] Fetching from GitHub...')
     const contents = await githubService.getContents(
       owner,
@@ -494,7 +498,8 @@ async function loadNode(node, resolve) {
   }
 
   try {
-    const { owner, repo, branch } = configStore.config
+    const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+    const { branch } = configStore.config
     const contents = await githubService.getContents(owner, repo, node.data.path, branch, {
       forceRefresh: forceCategoryFetch.value
     })
@@ -640,7 +645,8 @@ function handleUploadResults(results, messagePrefix = '上传') {
   // 刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
   if (ok > 0) {
     setTimeout(async () => {
-      const { owner, repo, branch } = configStore.config
+      const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+      const { branch } = configStore.config
       await workflowStore.refreshPendingInfo(owner, repo, branch)
       if (workflowStore.pendingInfo.pendingCount === 0) {
         setTimeout(() => {
@@ -679,7 +685,8 @@ async function handleRetryMetadata() {
       ElMessage.success('元数据已重新生成并提交')
       uploadStore.clearSuccessFiles()
 
-      const { owner, repo, branch } = configStore.config
+      const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+      const { branch } = configStore.config
       await workflowStore.refreshPendingInfo(owner, repo, branch)
     } else {
       ElMessage.error(result.error || '元数据重试失败')
@@ -800,7 +807,8 @@ async function createCategory(form) {
 
   creating.value = true
   try {
-    const { owner, repo, branch } = configStore.config
+    const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+    const { branch } = configStore.config
     let categoryPath = `wallpaper/${series.value}`
 
     // 根据是否有父分类决定创建一级还是二级
@@ -840,7 +848,8 @@ async function createCategory(form) {
 }
 
 async function handleDeleteCategory({ data }) {
-  const { owner, repo, branch } = configStore.config
+  const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+  const { branch } = configStore.config
 
   try {
     // 先检查目录内容
@@ -879,7 +888,8 @@ async function handleDeleteCategory({ data }) {
 async function confirmDeleteCategory() {
   if (!deleteTarget.data) return
 
-  const { owner, repo, branch } = configStore.config
+  const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+  const { branch } = configStore.config
   const data = deleteTarget.data
 
   deleting.value = true
@@ -955,9 +965,10 @@ async function deleteDirectoryRecursive(owner, repo, path, branch) {
 async function _refreshStats() {
   loadingStats.value = true
   try {
-    const { owner, repo, branch } = configStore.config
+    const { branch } = configStore.config
     for (const type of ['desktop', 'mobile', 'avatar']) {
       try {
+        const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, type)
         const c = await githubService.getContents(owner, repo, `wallpaper/${type}`, branch)
         stats[type] = c.filter(i => i.type === 'dir').length
       } catch {
@@ -989,6 +1000,12 @@ onMounted(async () => {
       // 重新检查权限
       authStore.permissionChecked = false
       await authStore.checkPermission(owner, repo)
+
+      // desktop 等分仓系列：追加分仓权限检查（desktop 为默认 series，权限态以分仓为准）
+      const seriesRepo = resolveSeriesRepoForConfig(configStore.config, series.value)
+      if (seriesRepo.repo && seriesRepo.repo !== repo) {
+        await authStore.checkPermission(seriesRepo.owner, seriesRepo.repo)
+      }
 
       console.log('[UploadView] 权限检查完成:', {
         permissionLevel: authStore.permissionLevel,
@@ -1026,8 +1043,12 @@ onUnmounted(() => {
   gsap.killTweensOf([previewPanelRef.value, workflowPanelRef.value])
 })
 
-watch(series, () => {
+watch(series, async newSeries => {
   selectedL1.value = ''
+  const seriesRepo = resolveSeriesRepoForConfig(configStore.config, newSeries)
+  if (seriesRepo.repo && seriesRepo.repo !== configStore.config.repo) {
+    await authStore.checkPermission(seriesRepo.owner, seriesRepo.repo)
+  }
 })
 watch(
   () => uploadStore.files,

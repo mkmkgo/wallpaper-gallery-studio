@@ -1,7 +1,7 @@
 import { CATEGORIES } from '@/config/categories'
 import { SUBCATEGORIES } from '@/config/subcategories'
 import { githubService } from '@/services/github'
-import { resolveAppConfig } from '@/app/config/app-config'
+import { resolveAppConfig, resolveSeriesRepoForConfig } from '@/app/config/app-config'
 import { createGitHubUploadWorkspaceRepository } from '@/features/upload-workspace/infrastructure/create-github-upload-workspace-repository'
 import { createCategoryTreeFromManifest } from '@/features/upload-workspace/domain/upload-workspace-manifest'
 import { useConfigStore } from '@/stores/config'
@@ -80,9 +80,14 @@ async function fetchUploadCategoryTree(force = false) {
 
   for (const seriesKey of SERIES_KEYS) {
     try {
+      // 分仓路由：desktop 的 wallpaper/desktop 目录从独立仓读取，mobile/avatar 仍走主仓
+      const { owner: seriesOwner, repo: seriesRepo } = resolveSeriesRepoForConfig(
+        configStore.config,
+        seriesKey
+      )
       const rootContents = await githubService.getContents(
-        owner,
-        repo,
+        seriesOwner,
+        seriesRepo,
         `wallpaper/${seriesKey}`,
         branch,
         { forceRefresh: force }
@@ -97,8 +102,8 @@ async function fetchUploadCategoryTree(force = false) {
       for (const secondaryCategory of secondary) {
         try {
           const thirdContents = await githubService.getContents(
-            owner,
-            repo,
+            seriesOwner,
+            seriesRepo,
             `wallpaper/${seriesKey}/${secondaryCategory}`,
             branch,
             { forceRefresh: force }

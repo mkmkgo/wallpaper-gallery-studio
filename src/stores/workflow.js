@@ -166,12 +166,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   // 触发工作流
-  async function triggerWorkflow(workflowOwner, workflowRepo, message = '', publisher = '') {
+  async function triggerWorkflow(
+    workflowOwner,
+    workflowRepo,
+    message = '',
+    publisher = '',
+    eventType = 'process-wallpapers'
+  ) {
     if (!canTrigger.value) return false
 
     triggering.value = true
     try {
-      await githubService.triggerWorkflow(workflowOwner, workflowRepo, 'process-wallpapers', {
+      await githubService.triggerWorkflow(workflowOwner, workflowRepo, eventType, {
         message: message || `chore: 处理 ${pendingInfo.value.pendingCount} 张新图片`,
         publisher: publisher || ''
       })

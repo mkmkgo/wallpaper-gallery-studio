@@ -236,7 +236,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   Operation,
   Refresh,
@@ -257,9 +257,12 @@ import GlassCard from '@/components/GlassCard.vue'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
+import { resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import { resolveSeriesWorkflowEvent } from '@/features/upload-workspace/domain/series-repo'
 
-defineProps({
-  collapsed: { type: Boolean, default: false }
+const props = defineProps({
+  collapsed: { type: Boolean, default: false },
+  currentSeries: { type: String, default: 'desktop' }
 })
 
 defineEmits(['toggle'])
@@ -342,8 +345,13 @@ const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || LEGACY_WORKFLOW_REPO
 const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || LEGACY_FRONTEND_OWNER
 const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || LEGACY_FRONTEND_REPO
 
+function resolveImageRepo() {
+  return resolveSeriesRepoForConfig(configStore.config, props.currentSeries)
+}
+
 async function refresh() {
-  const { owner, repo, branch } = configStore.config
+  const { owner, repo } = resolveImageRepo()
+  const { branch } = configStore.config
   try {
     const tasks = [
       workflowStore.refreshPendingInfo(owner, repo, branch),
@@ -367,7 +375,13 @@ async function handleTrigger() {
   }
   try {
     const publisher = authStore.user?.login || ''
-    await workflowStore.triggerWorkflow(WORKFLOW_OWNER, WORKFLOW_REPO, '', publisher)
+    await workflowStore.triggerWorkflow(
+      WORKFLOW_OWNER,
+      WORKFLOW_REPO,
+      '',
+      publisher,
+      resolveSeriesWorkflowEvent(props.currentSeries)
+    )
     ElMessage.success('工作流已触发，正在处理中...')
     setTimeout(() => {
       workflowStore.refreshWorkflowStatus(WORKFLOW_OWNER, WORKFLOW_REPO)
@@ -417,7 +431,7 @@ async function handleRollback() {
     )
 
     rolling.value = true
-    const { owner, repo } = configStore.config
+    const { owner, repo } = resolveImageRepo()
     const result = await workflowStore.rollbackLastRelease(
       owner,
       repo,
@@ -527,8 +541,17 @@ function formatDate(dateStr) {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
+// series 切换时刷新待处理/统计（触发/回滚均按当前系列打对应仓）
+watch(
+  () => props.currentSeries,
+  () => {
+    refresh()
+  }
+)
+
 onMounted(() => {
-  const { owner, repo, branch } = configStore.config
+  const { owner, repo } = resolveImageRepo()
+  const { branch } = configStore.config
   workflowStore.setImageRepoConfig(owner, repo, branch)
   refresh()
 })
