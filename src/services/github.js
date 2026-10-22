@@ -6,6 +6,8 @@
 const API_BASE = 'https://api.github.com'
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000
+// 仓库信息缓存时长（自动选仓会并发查询多个仓库，避免每次分配都打 API）
+const REPO_INFO_CACHE_TTL = 5 * 60 * 1000
 
 export function encodeGitHubContentPath(path = '') {
   return String(path)
@@ -29,6 +31,8 @@ class GitHubService {
     }
     // 目录存在性缓存，避免重复检查
     this.directoryCache = new Map()
+    // 仓库信息缓存（key: `owner/repo` → { data, timestamp }），供自动选仓批量查询复用
+    this.repoInfoCache = new Map()
   }
 
   /**
@@ -38,6 +42,16 @@ class GitHubService {
   clearDirectoryCache() {
     if (this.directoryCache) {
       this.directoryCache.clear()
+    }
+  }
+
+  /**
+   * 清理仓库信息缓存
+   * 仓库刚发生写入 / 需要重新判断容量时调用
+   */
+  clearReposInfoCache() {
+    if (this.repoInfoCache) {
+      this.repoInfoCache.clear()
     }
   }
 
@@ -245,6 +259,72 @@ class GitHubService {
       }
       throw error
     }
+  }
+
+  /**
+   * 获取仓库信息（体积 / 默认分支 / 权限）
+   * @param {string} owner
+   * @param {string} repo
+   * @returns {Promise<{ sizeKB: number, pushedAt: string, defaultBranch: string, permissions: object | null }>}
+   */
+  async getRepoInfo(owner, repo) {
+    const data = await this.request(`/repos/${owner}/${repo}`)
+
+    return {
+      sizeKB: Number.isFinite(data.size) ? data.size : 0,
+      pushedAt: data.pushed_at || '',
+      defaultBranch: data.default_branch || '',
+      permissions: data.permissions || null
+    }
+  }
+
+  /**
+   * 批量获取仓库信息（自动选仓用）
+   * 并发请求 + 5 分钟内存缓存；单个仓库失败不影响其余仓库（该 repoId 置为 null）
+   *
+   * @param {Array<{ repoId: string, owner: string, repo: string }>} list
+   * @returns {Promise<Record<string, { sizeKB: number, permissions: object | null, defaultBranch: string } | null>>}
+   *          以 repoId 为键；失败的仓库值为 null
+   */
+  async getReposInfo(list = []) {
+    const result = {}
+    const pending = []
+    const now = Date.now()
+
+    for (const item of Array.isArray(list) ? list : []) {
+      const repoId = item?.repoId || ''
+      const owner = item?.owner || ''
+      const repo = item?.repo || ''
+      if (!repoId || !owner || !repo) continue
+
+      const cacheKey = `${owner}/${repo}`
+      const cached = this.repoInfoCache.get(cacheKey)
+
+      if (cached && now - cached.timestamp < REPO_INFO_CACHE_TTL) {
+        result[repoId] = cached.data
+      } else {
+        pending.push({ repoId, owner, repo, cacheKey })
+      }
+    }
+
+    await Promise.all(
+      pending.map(async item => {
+        try {
+          const info = await this.getRepoInfo(item.owner, item.repo)
+          const payload = {
+            sizeKB: info.sizeKB,
+            permissions: info.permissions,
+            defaultBranch: info.defaultBranch
+          }
+          this.repoInfoCache.set(item.cacheKey, { data: payload, timestamp: Date.now() })
+          result[item.repoId] = payload
+        } catch {
+          result[item.repoId] = null
+        }
+      })
+    )
+
+    return result
   }
 
   // ============ 仓库内容 ============

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { githubService } from '@/services/github'
+import { DEFAULT_APP_CONFIG } from '@/app/config/app-config'
 
 const STORAGE_KEY = 'wallpaper_admin_config'
 
@@ -12,7 +13,17 @@ const DEFAULT_CONFIG = {
   repo: import.meta.env.VITE_GITHUB_REPO_NAME || '',
   branch: import.meta.env.VITE_GITHUB_REPO_BRANCH || 'main',
   clientId: import.meta.env.VITE_GITHUB_CLIENT_ID || '',
-  oauthWorkerUrl: import.meta.env.VITE_OAUTH_WORKER_URL || ''
+  oauthWorkerUrl: import.meta.env.VITE_OAUTH_WORKER_URL || '',
+  // 仓库注册表（v2）：新增字段必须同步加进 loadConfig 的白名单，否则存储后刷新即丢
+  version: 2,
+  defaultRepoId: DEFAULT_APP_CONFIG.repository.defaultRepoId,
+  assignment: DEFAULT_APP_CONFIG.repository.assignment,
+  repositories: [...DEFAULT_APP_CONFIG.repository.repositories]
+}
+
+// 默认配置的深拷贝（repositories 是数组，避免各实例共享同一引用）
+function createDefaultConfig() {
+  return { ...DEFAULT_CONFIG, repositories: [...DEFAULT_CONFIG.repositories] }
 }
 
 export const useConfigStore = defineStore('config', () => {
@@ -21,7 +32,7 @@ export const useConfigStore = defineStore('config', () => {
   const loadConfig = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      if (!stored) return { ...DEFAULT_CONFIG }
+      if (!stored) return createDefaultConfig()
       const parsed = JSON.parse(stored)
       // 逐字段合并：localStorage 有值则用，为空时用环境变量默认值
       return {
@@ -29,10 +40,19 @@ export const useConfigStore = defineStore('config', () => {
         repo: parsed.repo || DEFAULT_CONFIG.repo,
         branch: parsed.branch || DEFAULT_CONFIG.branch,
         clientId: parsed.clientId || DEFAULT_CONFIG.clientId,
-        oauthWorkerUrl: parsed.oauthWorkerUrl || DEFAULT_CONFIG.oauthWorkerUrl
+        oauthWorkerUrl: parsed.oauthWorkerUrl || DEFAULT_CONFIG.oauthWorkerUrl,
+        version: parsed.version || DEFAULT_CONFIG.version,
+        defaultRepoId: parsed.defaultRepoId || DEFAULT_CONFIG.defaultRepoId,
+        assignment: parsed.assignment || DEFAULT_CONFIG.assignment,
+        // 注册表是数组：空数组会被 mergeConfig 原样覆盖掉默认注册表，
+        // 因此空数组 / 非数组一律回落到默认注册表
+        repositories:
+          Array.isArray(parsed.repositories) && parsed.repositories.length
+            ? parsed.repositories
+            : [...DEFAULT_CONFIG.repositories]
       }
     } catch {
-      return { ...DEFAULT_CONFIG }
+      return createDefaultConfig()
     }
   }
 
@@ -63,7 +83,7 @@ export const useConfigStore = defineStore('config', () => {
 
   // 重置为默认配置
   function resetConfig() {
-    config.value = { ...DEFAULT_CONFIG }
+    config.value = createDefaultConfig()
     saveConfig()
   }
 
@@ -114,6 +134,12 @@ export const useConfigStore = defineStore('config', () => {
     return /^[a-zA-Z0-9-]+$/.test(name)
   }
 
+  // 验证仓库注册表 ID 格式（稳定 ID，与 GitHub 仓库名解耦）
+  function isValidRepoId(id) {
+    if (!id || typeof id !== 'string') return false
+    return /^[a-zA-Z0-9._-]+$/.test(id)
+  }
+
   return {
     // 状态
     config,
@@ -127,6 +153,7 @@ export const useConfigStore = defineStore('config', () => {
     resetConfig,
     validateConfig,
     isValidRepoName,
-    isValidOwnerName
+    isValidOwnerName,
+    isValidRepoId
   }
 })

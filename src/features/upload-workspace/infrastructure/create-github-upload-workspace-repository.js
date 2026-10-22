@@ -1,36 +1,101 @@
-import { resolveSeriesRepo } from '../domain/series-repo'
+import {
+  allocateRepo,
+  collectRegistrySeries,
+  createRegistryFromLegacyConfig
+} from '../domain/repo-registry'
 import { normalizeUploadWorkspaceManifest } from '../domain/upload-workspace-manifest'
 
-const DEFAULT_SERIES = ['desktop', 'mobile', 'avatar']
+// 注册表里聚合不出 series 时的兜底值（与旧版保持一致）
+const LEGACY_DEFAULT_SERIES = ['desktop', 'mobile', 'avatar']
+
+/**
+ * 兼容旧签名：getContext(series: string)
+ * 新签名：getContext({ series, repoId })
+ * @param {string | { series?: string, repoId?: string } | undefined} input
+ * @returns {{ series: string, repoId: string }}
+ */
+function toContextInput(input) {
+  if (typeof input === 'string') {
+    return { series: input, repoId: '' }
+  }
+  if (input && typeof input === 'object') {
+    return { series: input.series || '', repoId: input.repoId || '' }
+  }
+  return { series: '', repoId: '' }
+}
 
 export function createGitHubUploadWorkspaceRepository({
   githubClient,
   getRepositoryConfig,
   getAppConfig
 }) {
-  function getContext(series) {
-    const repositoryConfig = getRepositoryConfig()
-    const appConfig = getAppConfig()
-    const { owner, repo } = resolveSeriesRepo(
-      {
-        owner: repositoryConfig.owner || appConfig.repository.owner,
-        repo: repositoryConfig.repo || appConfig.repository.repo,
-        seriesRepos: appConfig.repository.seriesRepos
-      },
-      series
-    )
+  function resolveFallback() {
+    const repositoryConfig = getRepositoryConfig() || {}
+    const appConfig = getAppConfig() || {}
+    const repository = appConfig.repository || {}
+    const upload = appConfig.upload || {}
 
     return {
-      owner,
-      repo,
-      branch: repositoryConfig.branch || appConfig.repository.branch,
-      wallpaperRoot: appConfig.repository.wallpaperRoot,
-      metadataPendingDir: appConfig.upload.metadataPendingDir
+      repositoryConfig,
+      repository,
+      upload,
+      fallback: {
+        owner: repositoryConfig.owner || repository.owner || '',
+        repo: repositoryConfig.repo || repository.repo || '',
+        branch: repositoryConfig.branch || repository.branch || 'main',
+        defaultRepoId: repositoryConfig.defaultRepoId || repository.defaultRepoId || 'main'
+      }
     }
   }
 
+  function getRegistry(repositoryConfig, repository, fallback) {
+    const repositories =
+      Array.isArray(repositoryConfig.repositories) && repositoryConfig.repositories.length
+        ? repositoryConfig.repositories
+        : repository.repositories
+
+    return createRegistryFromLegacyConfig({
+      ...fallback,
+      repositories,
+      // 只认用户显式配置的旧 seriesRepos；默认配置派生的 seriesRepos 不参与迁移，
+      // 否则会反向覆盖掉用户已配置的注册表条目
+      seriesRepos: repositoryConfig.seriesRepos
+    })
+  }
+
+  function getContext(input) {
+    const { series, repoId } = toContextInput(input)
+    const { repositoryConfig, repository, upload, fallback } = resolveFallback()
+    const registry = getRegistry(repositoryConfig, repository, fallback)
+    const context = allocateRepo(registry, series, {
+      repoId,
+      defaultRepoId: fallback.defaultRepoId
+    })
+
+    return {
+      repoId: context?.repoId || '',
+      owner: context?.owner || fallback.owner,
+      repo: context?.repo || fallback.repo,
+      // branch 跟随分仓条目（registry 条目自带 branch），不再是恒等于主仓 branch
+      branch: context?.branch || fallback.branch,
+      workflowEvent: context?.workflowEvent || '',
+      label: context?.label || '',
+      wallpaperRoot: repository.wallpaperRoot,
+      metadataPendingDir: upload.metadataPendingDir
+    }
+  }
+
+  function getDefaultSeries() {
+    const { repositoryConfig, repository, fallback } = resolveFallback()
+    return (
+      collectRegistrySeries(getRegistry(repositoryConfig, repository, fallback)) || [
+        ...LEGACY_DEFAULT_SERIES
+      ]
+    )
+  }
+
   async function getDirectoryContents(path, options = {}) {
-    const { owner, repo, branch } = getContext(options.series)
+    const { owner, repo, branch } = getContext({ series: options.series, repoId: options.repoId })
     return githubClient.getContents(owner, repo, path, branch, options)
   }
 
@@ -45,11 +110,11 @@ export function createGitHubUploadWorkspaceRepository({
     },
     getDirectoryContents,
     async getSeriesDirectories(series, options = {}) {
-      const { wallpaperRoot } = getContext(series)
+      const { wallpaperRoot } = getContext({ series, repoId: options.repoId })
       return getDirectoryContents(`${wallpaperRoot}/${series}`, { ...options, series })
     },
     async getCategoryManifest(options = {}) {
-      const { owner, repo, branch } = getContext(options.series)
+      const { owner, repo, branch } = getContext({ series: options.series, repoId: options.repoId })
       const manifestPath = getAppConfig().repository.manifestPath
 
       if (!manifestPath) {
@@ -71,7 +136,7 @@ export function createGitHubUploadWorkspaceRepository({
       }
     },
     async checkFileExists(path, options = {}) {
-      const { owner, repo, branch } = getContext(options.series)
+      const { owner, repo, branch } = getContext({ series: options.series, repoId: options.repoId })
       return githubClient.checkFileExists(owner, repo, path, branch)
     },
     async uploadImage(path, file, message, series) {
@@ -119,10 +184,11 @@ export function createGitHubUploadWorkspaceRepository({
 
       return false
     },
-    async getCategoryCounts(seriesKeys = DEFAULT_SERIES) {
+    async getCategoryCounts(seriesKeys) {
+      const keys = seriesKeys?.length ? seriesKeys : getDefaultSeries()
       const counts = {}
 
-      for (const series of seriesKeys) {
+      for (const series of keys) {
         try {
           const { wallpaperRoot } = getContext(series)
           const contents = await getDirectoryContents(`${wallpaperRoot}/${series}`, { series })
