@@ -63,7 +63,7 @@ export function createUploadSessionService({
           }
         }
 
-        await repository.uploadImage(path, uploadFile.file, message)
+        await repository.uploadImage(path, uploadFile.file, message, series)
         uploadFile.progress = 100
         uploadFile.status = 'success'
         uploadFile.reusedExisting = false
@@ -141,57 +141,83 @@ export function createUploadSessionService({
     ) {
       if (!uploadedFiles?.length) return null
 
-      const {
-        owner,
-        repo,
-        branch,
-        metadataPendingDir = 'metadata-pending'
-      } = repository.getContext()
-
-      const pendingData = {
-        version: 1,
-        createdAt: new Date(now()).toISOString(),
-        source: 'studio',
-        targetRepo: { owner, repo, branch },
-        images: uploadedFiles.map(file => {
-          const fileTargetPath = file.targetPath || targetPath
-          const fileSeries = file.targetSeries || series
-          const pathParts = fileTargetPath.split('/')
-
-          return {
-            series: fileSeries,
-            relativePath: `${fileTargetPath}/${file.name}`,
-            category: pathParts[2] || '',
-            subcategory: pathParts[3] || '',
-            filename: file.name,
-            createdAt: new Date(now()).toISOString(),
-            size: file.size,
-            format: getExtension(file.name),
-            ai: file.aiMetadata || {
-              keywords: extractKeywordsFromFilename(file.name),
-              description: '',
-              displayTitle: '',
-              filename: '',
-              confidence: 0,
-              model: 'none',
-              analyzedAt: null
-            }
-          }
-        })
+      const groups = new Map()
+      for (const file of uploadedFiles) {
+        const groupSeries = file.targetSeries || series
+        if (!groups.has(groupSeries)) {
+          groups.set(groupSeries, [])
+        }
+        groups.get(groupSeries).push(file)
       }
 
-      const pendingFilename = `${now()}-${random().toString(36).substring(2, 8)}.json`
-      const pendingPath = `${metadataPendingDir}/${pendingFilename}`
+      const pendingPaths = []
+      const errors = []
 
-      try {
-        await repository.createFile(
-          pendingPath,
-          JSON.stringify(pendingData, null, 2),
-          `Add pending metadata: ${pendingFilename}`
-        )
-        return { success: true, path: pendingPath, count: uploadedFiles.length }
-      } catch (error) {
-        return { success: false, error: error.message }
+      for (const [groupSeries, files] of groups) {
+        const {
+          owner,
+          repo,
+          branch,
+          metadataPendingDir = 'metadata-pending'
+        } = repository.getContext(groupSeries)
+
+        const pendingData = {
+          version: 1,
+          createdAt: new Date(now()).toISOString(),
+          source: 'studio',
+          targetRepo: { owner, repo, branch },
+          images: files.map(file => {
+            const fileTargetPath = file.targetPath || targetPath
+            const fileSeries = file.targetSeries || series
+            const pathParts = fileTargetPath.split('/')
+
+            return {
+              series: fileSeries,
+              relativePath: `${fileTargetPath}/${file.name}`,
+              category: pathParts[2] || '',
+              subcategory: pathParts[3] || '',
+              filename: file.name,
+              createdAt: new Date(now()).toISOString(),
+              size: file.size,
+              format: getExtension(file.name),
+              ai: file.aiMetadata || {
+                keywords: extractKeywordsFromFilename(file.name),
+                description: '',
+                displayTitle: '',
+                filename: '',
+                confidence: 0,
+                model: 'none',
+                analyzedAt: null
+              }
+            }
+          })
+        }
+
+        const pendingFilename = `${now()}-${random().toString(36).substring(2, 8)}.json`
+        const pendingPath = `${metadataPendingDir}/${pendingFilename}`
+
+        try {
+          await repository.createFile(
+            pendingPath,
+            JSON.stringify(pendingData, null, 2),
+            `Add pending metadata: ${pendingFilename}`,
+            groupSeries
+          )
+          pendingPaths.push(pendingPath)
+        } catch (error) {
+          errors.push(error.message)
+        }
+      }
+
+      if (errors.length > 0) {
+        return { success: false, error: errors.join('; ') }
+      }
+
+      return {
+        success: true,
+        path: pendingPaths[0],
+        paths: pendingPaths,
+        count: uploadedFiles.length
       }
     }
   }

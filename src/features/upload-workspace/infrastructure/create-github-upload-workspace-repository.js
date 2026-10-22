@@ -1,3 +1,4 @@
+import { resolveSeriesRepo } from '../domain/series-repo'
 import { normalizeUploadWorkspaceManifest } from '../domain/upload-workspace-manifest'
 
 const DEFAULT_SERIES = ['desktop', 'mobile', 'avatar']
@@ -7,13 +8,21 @@ export function createGitHubUploadWorkspaceRepository({
   getRepositoryConfig,
   getAppConfig
 }) {
-  function getContext() {
+  function getContext(series) {
     const repositoryConfig = getRepositoryConfig()
     const appConfig = getAppConfig()
+    const { owner, repo } = resolveSeriesRepo(
+      {
+        owner: repositoryConfig.owner || appConfig.repository.owner,
+        repo: repositoryConfig.repo || appConfig.repository.repo,
+        seriesRepos: appConfig.repository.seriesRepos
+      },
+      series
+    )
 
     return {
-      owner: repositoryConfig.owner,
-      repo: repositoryConfig.repo,
+      owner,
+      repo,
       branch: repositoryConfig.branch || appConfig.repository.branch,
       wallpaperRoot: appConfig.repository.wallpaperRoot,
       metadataPendingDir: appConfig.upload.metadataPendingDir
@@ -21,7 +30,7 @@ export function createGitHubUploadWorkspaceRepository({
   }
 
   async function getDirectoryContents(path, options = {}) {
-    const { owner, repo, branch } = getContext()
+    const { owner, repo, branch } = getContext(options.series)
     return githubClient.getContents(owner, repo, path, branch, options)
   }
 
@@ -36,11 +45,11 @@ export function createGitHubUploadWorkspaceRepository({
     },
     getDirectoryContents,
     async getSeriesDirectories(series, options = {}) {
-      const { wallpaperRoot } = getContext()
-      return getDirectoryContents(`${wallpaperRoot}/${series}`, options)
+      const { wallpaperRoot } = getContext(series)
+      return getDirectoryContents(`${wallpaperRoot}/${series}`, { ...options, series })
     },
     async getCategoryManifest(options = {}) {
-      const { owner, repo, branch } = getContext()
+      const { owner, repo, branch } = getContext(options.series)
       const manifestPath = getAppConfig().repository.manifestPath
 
       if (!manifestPath) {
@@ -61,20 +70,20 @@ export function createGitHubUploadWorkspaceRepository({
         throw error
       }
     },
-    async checkFileExists(path) {
-      const { owner, repo, branch } = getContext()
+    async checkFileExists(path, options = {}) {
+      const { owner, repo, branch } = getContext(options.series)
       return githubClient.checkFileExists(owner, repo, path, branch)
     },
-    async uploadImage(path, file, message) {
-      const { owner, repo, branch } = getContext()
+    async uploadImage(path, file, message, series) {
+      const { owner, repo, branch } = getContext(series)
       return githubClient.uploadImage(owner, repo, path, file, message, branch)
     },
-    async createFile(path, content, message) {
-      const { owner, repo, branch } = getContext()
+    async createFile(path, content, message, series) {
+      const { owner, repo, branch } = getContext(series)
       return githubClient.createFile(owner, repo, path, content, message, branch)
     },
-    async deleteFile(path, sha, message) {
-      const { owner, repo, branch } = getContext()
+    async deleteFile(path, sha, message, series) {
+      const { owner, repo, branch } = getContext(series)
       return githubClient.deleteFile(owner, repo, path, sha, message, branch)
     },
     async createCategoryPlaceholder({ series, parentCategory = '', name, level = 'l1' }) {
@@ -87,7 +96,7 @@ export function createGitHubUploadWorkspaceRepository({
 
       categoryPath += `/${name}`
 
-      await this.createFile(`${categoryPath}/.gitkeep`, '', `Create category: ${name}`)
+      await this.createFile(`${categoryPath}/.gitkeep`, '', `Create category: ${name}`, series)
       return categoryPath
     },
     async waitForDirectorySync(path, { shouldExist, attempts = 8, delay = 700 } = {}) {
@@ -115,7 +124,8 @@ export function createGitHubUploadWorkspaceRepository({
 
       for (const series of seriesKeys) {
         try {
-          const contents = await this.getSeriesDirectories(series)
+          const { wallpaperRoot } = getContext(series)
+          const contents = await getDirectoryContents(`${wallpaperRoot}/${series}`, { series })
           counts[series] = contents.filter(item => item.type === 'dir').length
         } catch {
           counts[series] = 0
