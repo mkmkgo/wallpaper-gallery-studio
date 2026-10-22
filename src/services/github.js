@@ -711,7 +711,14 @@ class GitHubService {
    * 回滚到上一个 tag（触发工作流进行完整回滚）
    * 会删除该 tag 新增的文件、更新 timestamps、删除 tag 和 release
    */
-  async rollbackToLastTag(owner, repo, workflowOwner, workflowRepo, tagName = '') {
+  async rollbackToLastTag(
+    owner,
+    repo,
+    workflowOwner,
+    workflowRepo,
+    tagName = '',
+    eventType = 'rollback-release'
+  ) {
     // 如果没有指定 tag，获取最新的
     if (!tagName) {
       const tags = await this.getTags(owner, repo, 2)
@@ -722,7 +729,9 @@ class GitHubService {
     }
 
     // 触发回滚工作流
-    await this.triggerWorkflow(workflowOwner, workflowRepo, 'rollback-release', {
+    // eventType 由调用方按目标仓库给出（如 rollback-release-desktop），
+    // 缺省值仅为向后兼容，务必走仓库注册表的 rollbackEvent 而非硬编码
+    await this.triggerWorkflow(workflowOwner, workflowRepo, eventType, {
       tag: tagName
     })
 

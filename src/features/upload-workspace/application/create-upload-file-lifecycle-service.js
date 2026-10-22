@@ -71,6 +71,8 @@ export function createUploadFileLifecycleService({
           error: null,
           targetPath: target.l1 ? buildTargetPath(target.series, target.l1, target.l2) : '',
           targetSeries: target.series,
+          // 空字符串 = 跟随分配器（allocateRepo）自动推荐；非空 = 用户手动覆盖
+          targetRepoId: target.repoId || '',
           targetL1: target.l1,
           targetL2: target.l2,
           aiMetadata: cachedAiMetadata,

@@ -15,6 +15,9 @@ export const REPO_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 /** 未显式配置 workflowEvent 时使用的默认事件 */
 export const DEFAULT_WORKFLOW_EVENT = 'process-wallpapers'
 
+/** 未显式配置 rollbackEvent 时使用的默认事件 */
+export const DEFAULT_ROLLBACK_EVENT = 'rollback-release'
+
 /** 兜底主仓的优先级（足够大，保证任何显式条目都排在它前面） */
 export const FALLBACK_PRIORITY = 1000
 
@@ -47,6 +50,7 @@ export const DEFAULT_REPOSITORY_REGISTRY = [
     priority: 0,
     capacityKB: 0,
     workflowEvent: 'process-wallpapers',
+    rollbackEvent: 'rollback-release',
     cdnTagPrefix: 'v'
   },
   {
@@ -60,6 +64,7 @@ export const DEFAULT_REPOSITORY_REGISTRY = [
     priority: 0,
     capacityKB: 0,
     workflowEvent: 'process-wallpapers-desktop',
+    rollbackEvent: 'rollback-release-desktop',
     cdnTagPrefix: 'v'
   }
 ]
@@ -71,6 +76,24 @@ function normalizeAccepts(value) {
 
 function toNumber(value, fallback) {
   return Number.isFinite(value) ? value : fallback
+}
+
+/**
+ * 由 workflow 事件名推导回滚事件名
+ * 规则：把 `process-wallpapers` 前缀换成 `rollback-release`，其余后缀原样保留
+ *   process-wallpapers        → rollback-release
+ *   process-wallpapers-desktop → rollback-release-desktop
+ * 无法识别的事件名（不是 process-wallpapers 前缀）一律回落默认回滚事件
+ *
+ * @param {string} workflowEvent
+ * @returns {string}
+ */
+export function deriveRollbackEvent(workflowEvent = '') {
+  const event = String(workflowEvent ?? '').trim()
+  const match = /^process-wallpapers(.*)$/.exec(event)
+
+  if (!match) return DEFAULT_ROLLBACK_EVENT
+  return `${DEFAULT_ROLLBACK_EVENT}${match[1]}`
 }
 
 /**
@@ -87,6 +110,7 @@ export function normalizeRegistry(registry, defaults = {}) {
     .map((entry, index) => {
       const repo = String(entry.repo ?? '')
       const id = String(entry.id ?? repo ?? `repo-${index}`)
+      const workflowEvent = String(entry.workflowEvent ?? '') || DEFAULT_WORKFLOW_EVENT
 
       return {
         id,
@@ -99,7 +123,9 @@ export function normalizeRegistry(registry, defaults = {}) {
         priority: toNumber(entry.priority, 0),
         // capacityKB <= 0 表示不限容量（不参与容量判断）
         capacityKB: toNumber(entry.capacityKB, 0),
-        workflowEvent: String(entry.workflowEvent ?? '') || DEFAULT_WORKFLOW_EVENT,
+        workflowEvent,
+        // 未配置时按 workflowEvent 推导（process-wallpapers-x → rollback-release-x）
+        rollbackEvent: String(entry.rollbackEvent ?? '') || deriveRollbackEvent(workflowEvent),
         cdnTagPrefix: String(entry.cdnTagPrefix ?? '') || 'v'
       }
     })
@@ -165,6 +191,22 @@ export function resolveRepoContext(registry, repoId) {
  */
 export function resolveRepoWorkflowEvent(registry, repoId) {
   return resolveRepoContext(registry, repoId)?.workflowEvent || ''
+}
+
+/**
+ * 取仓库对应的回滚 workflow 事件名
+ * 与 `resolveRepoContext` 不同：这里不做 enabled 过滤——
+ * 停用仓库里已有的历史版本仍需要能回滚。
+ *
+ * @param {Array<object>} registry
+ * @param {string} repoId
+ * @returns {string} 未知仓库返回空字符串
+ */
+export function resolveRepoRollbackEvent(registry, repoId) {
+  const entry = normalizeRegistry(registry).find(item => item.id === repoId)
+  if (!entry) return ''
+
+  return entry.rollbackEvent || deriveRollbackEvent(entry.workflowEvent)
 }
 
 /**
@@ -285,6 +327,7 @@ export function createRegistryFromLegacyConfig(config = {}) {
       priority: FALLBACK_PRIORITY,
       capacityKB: 0,
       workflowEvent: DEFAULT_WORKFLOW_EVENT,
+      rollbackEvent: DEFAULT_ROLLBACK_EVENT,
       cdnTagPrefix: 'v'
     })
   } else {
@@ -305,6 +348,9 @@ export function createRegistryFromLegacyConfig(config = {}) {
       // repo 为空视为未配置，保持与主仓一致的回落语义
       if (!repo) continue
 
+      const legacyWorkflowEvent =
+        String(override.workflowEvent ?? '') || resolveLegacyWorkflowEvent(series)
+
       registry.push({
         // 旧版条目优先级高于同名新版条目（priority 更小）
         id: `legacy-${series}`,
@@ -316,7 +362,9 @@ export function createRegistryFromLegacyConfig(config = {}) {
         accepts: [series],
         priority: Number.isFinite(override.priority) ? override.priority : -1,
         capacityKB: Number.isFinite(override.capacityKB) ? override.capacityKB : 0,
-        workflowEvent: String(override.workflowEvent ?? '') || resolveLegacyWorkflowEvent(series),
+        workflowEvent: legacyWorkflowEvent,
+        rollbackEvent:
+          String(override.rollbackEvent ?? '') || deriveRollbackEvent(legacyWorkflowEvent),
         cdnTagPrefix: String(override.cdnTagPrefix ?? '') || 'v'
       })
     }

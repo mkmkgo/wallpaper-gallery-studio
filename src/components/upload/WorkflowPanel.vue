@@ -257,7 +257,12 @@ import GlassCard from '@/components/GlassCard.vue'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
-import { resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import { resolveRepositoryRegistry, resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import {
+  allocateRepo,
+  deriveRollbackEvent,
+  resolveRepoRollbackEvent
+} from '@/features/upload-workspace/domain/repo-registry'
 import { resolveSeriesWorkflowEvent } from '@/features/upload-workspace/domain/series-repo'
 
 const props = defineProps({
@@ -349,6 +354,32 @@ function resolveImageRepo() {
   return resolveSeriesRepoForConfig(configStore.config, props.currentSeries)
 }
 
+/**
+ * 当前 series 命中的仓库 ID（用于取该仓对应的回滚事件名）
+ * @returns {string}
+ */
+function resolveImageRepoId() {
+  const registry = resolveRepositoryRegistry(configStore.config)
+  return (
+    allocateRepo(registry, props.currentSeries, {
+      defaultRepoId: configStore.config.defaultRepoId || 'main'
+    })?.repoId || ''
+  )
+}
+
+/**
+ * 回滚事件名：优先用注册表条目上的 rollbackEvent，
+ * 兜底按 workflowEvent 推导（process-wallpapers-x → rollback-release-x）
+ * @returns {string}
+ */
+function resolveRollbackEvent() {
+  const registry = resolveRepositoryRegistry(configStore.config)
+  const event = resolveRepoRollbackEvent(registry, resolveImageRepoId())
+
+  if (event) return event
+  return deriveRollbackEvent(resolveSeriesWorkflowEvent(props.currentSeries))
+}
+
 async function refresh() {
   const { owner, repo } = resolveImageRepo()
   const { branch } = configStore.config
@@ -437,7 +468,8 @@ async function handleRollback() {
       repo,
       WORKFLOW_OWNER,
       WORKFLOW_REPO,
-      tagName
+      tagName,
+      resolveRollbackEvent()
     )
 
     ElMessage.success(`回滚工作流已触发，正在处理 ${result.deletedTag}...`)

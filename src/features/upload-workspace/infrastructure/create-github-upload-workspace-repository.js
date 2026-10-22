@@ -139,16 +139,16 @@ export function createGitHubUploadWorkspaceRepository({
       const { owner, repo, branch } = getContext({ series: options.series, repoId: options.repoId })
       return githubClient.checkFileExists(owner, repo, path, branch)
     },
-    async uploadImage(path, file, message, series) {
-      const { owner, repo, branch } = getContext(series)
+    async uploadImage(path, file, message, series, repoId = '') {
+      const { owner, repo, branch } = getContext({ series, repoId })
       return githubClient.uploadImage(owner, repo, path, file, message, branch)
     },
-    async createFile(path, content, message, series) {
-      const { owner, repo, branch } = getContext(series)
+    async createFile(path, content, message, series, repoId = '') {
+      const { owner, repo, branch } = getContext({ series, repoId })
       return githubClient.createFile(owner, repo, path, content, message, branch)
     },
-    async deleteFile(path, sha, message, series) {
-      const { owner, repo, branch } = getContext(series)
+    async deleteFile(path, sha, message, series, repoId = '') {
+      const { owner, repo, branch } = getContext({ series, repoId })
       return githubClient.deleteFile(owner, repo, path, sha, message, branch)
     },
     async createCategoryPlaceholder({ series, parentCategory = '', name, level = 'l1' }) {

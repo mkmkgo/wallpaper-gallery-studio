@@ -4,9 +4,11 @@ import { useConfigStore } from '@/stores/config'
 import {
   allocateRepo,
   createRegistryFromLegacyConfig,
+  deriveRollbackEvent,
   isValidRepoId,
   listCandidates,
   resolveRepoContext,
+  resolveRepoRollbackEvent,
   resolveRepoWorkflowEvent
 } from './repo-registry.js'
 
@@ -224,6 +226,68 @@ describe('resolveRepoWorkflowEvent', () => {
 
   it('未知仓库返回空字符串', () => {
     expect(resolveRepoWorkflowEvent(buildRegistry(), 'nope')).toBe('')
+  })
+})
+
+describe('rollbackEvent（回滚事件名）', () => {
+  it('process-wallpapers 前缀换成 rollback-release', () => {
+    expect(deriveRollbackEvent('process-wallpapers')).toBe('rollback-release')
+    expect(deriveRollbackEvent('process-wallpapers-desktop')).toBe('rollback-release-desktop')
+    expect(deriveRollbackEvent('process-wallpapers-desktop-2')).toBe('rollback-release-desktop-2')
+  })
+
+  it('空值 / 无法识别的事件名回落默认回滚事件', () => {
+    expect(deriveRollbackEvent()).toBe('rollback-release')
+    expect(deriveRollbackEvent('')).toBe('rollback-release')
+    expect(deriveRollbackEvent('some-other-event')).toBe('rollback-release')
+  })
+
+  it('注册表条目归一化时自动补 rollbackEvent', () => {
+    const registry = createRegistryFromLegacyConfig({
+      owner: 'mkmkgo',
+      repo: 'nuanXinProPic',
+      repositories: [{ id: 'desktop-3', repo: 'pic-desktop-3', accepts: ['desktop'] }]
+    })
+
+    const entry = registry.find(item => item.id === 'desktop-3')
+    // 未显式配置 workflowEvent → 默认 process-wallpapers → 回滚事件为 rollback-release
+    expect(entry.workflowEvent).toBe('process-wallpapers')
+    expect(entry.rollbackEvent).toBe('rollback-release')
+
+    const withEvent = registry.find(item => item.id === 'main')
+    expect(withEvent.rollbackEvent).toBe('rollback-release')
+  })
+
+  it('显式配置的 rollbackEvent 优先于推导值', () => {
+    const registry = createRegistryFromLegacyConfig({
+      repositories: [
+        {
+          id: 'desktop',
+          repo: 'pic-desktop',
+          accepts: ['desktop'],
+          workflowEvent: 'process-wallpapers-desktop',
+          rollbackEvent: 'custom-rollback'
+        }
+      ]
+    })
+
+    expect(registry[0].rollbackEvent).toBe('custom-rollback')
+  })
+
+  it('resolveRepoRollbackEvent 按仓库取事件名', () => {
+    const registry = [
+      {
+        id: 'desktop',
+        repo: 'pic-desktop',
+        accepts: ['desktop'],
+        enabled: true,
+        workflowEvent: 'process-wallpapers-desktop'
+      }
+    ]
+
+    expect(resolveRepoRollbackEvent(registry, 'desktop')).toBe('rollback-release-desktop')
+    // 停用仓库仍要能回滚历史版本，因此这里不像 resolveRepoContext 那样过滤 enabled
+    expect(resolveRepoRollbackEvent(registry, 'unknown')).toBe('')
   })
 })
 

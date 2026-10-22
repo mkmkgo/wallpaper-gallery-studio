@@ -206,7 +206,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     imageRepo,
     workflowOwner,
     workflowRepo,
-    tagName = ''
+    tagName = '',
+    eventType = ''
   ) {
     loading.value = true
     try {
@@ -215,7 +216,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
         imageRepo,
         workflowOwner,
         workflowRepo,
-        tagName
+        tagName,
+        eventType || 'rollback-release'
       )
 
       // 标记为刚触发状态，开始轮询

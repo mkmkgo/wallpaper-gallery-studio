@@ -26,7 +26,7 @@ export function createUploadSessionService({
   random = Math.random
 }) {
   return {
-    async uploadFile(uploadFile, { targetPath, series, computeFileHash }) {
+    async uploadFile(uploadFile, { targetPath, series, repoId = '', computeFileHash }) {
       if (!targetPath) {
         uploadFile.status = 'error'
         uploadFile.error = '未设置上传目录'
@@ -63,7 +63,13 @@ export function createUploadSessionService({
           }
         }
 
-        await repository.uploadImage(path, uploadFile.file, message, series)
+        await repository.uploadImage(
+          path,
+          uploadFile.file,
+          message,
+          series,
+          uploadFile.targetRepoId || repoId
+        )
         uploadFile.progress = 100
         uploadFile.status = 'success'
         uploadFile.reusedExisting = false
@@ -94,7 +100,7 @@ export function createUploadSessionService({
 
     async uploadPendingFiles(
       files,
-      { uploadDelayMs, targetPath, series, computeFileHash, onBeforeUpload = null }
+      { uploadDelayMs, targetPath, series, repoId = '', computeFileHash, onBeforeUpload = null }
     ) {
       const results = []
       const uploadedFiles = []
@@ -108,6 +114,7 @@ export function createUploadSessionService({
         const result = await this.uploadFile(file, {
           targetPath: file.targetPath || targetPath,
           series: file.targetSeries || series,
+          repoId,
           computeFileHash
         })
         results.push({ file, ...result })
@@ -137,36 +144,41 @@ export function createUploadSessionService({
 
     async generatePendingMetadata(
       uploadedFiles,
-      { targetPath, series, getExtension, extractKeywordsFromFilename }
+      { targetPath, series, repoId = '', getExtension, extractKeywordsFromFilename }
     ) {
       if (!uploadedFiles?.length) return null
 
+      // 按「目标仓库 + series」分组：同一批图手选了不同仓库时，
+      // metadata-pending 必须写到各自对应的仓库，否则工作流处理不到。
       const groups = new Map()
       for (const file of uploadedFiles) {
         const groupSeries = file.targetSeries || series
-        if (!groups.has(groupSeries)) {
-          groups.set(groupSeries, [])
+        const groupRepoId = file.targetRepoId || repoId || ''
+        const groupKey = `${groupRepoId}::${groupSeries}`
+
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, { series: groupSeries, repoId: groupRepoId, files: [] })
         }
-        groups.get(groupSeries).push(file)
+        groups.get(groupKey).files.push(file)
       }
 
       const pendingPaths = []
       const errors = []
 
-      for (const [groupSeries, files] of groups) {
+      for (const group of groups.values()) {
         const {
           owner,
           repo,
           branch,
           metadataPendingDir = 'metadata-pending'
-        } = repository.getContext(groupSeries)
+        } = repository.getContext({ series: group.series, repoId: group.repoId })
 
         const pendingData = {
           version: 1,
           createdAt: new Date(now()).toISOString(),
           source: 'studio',
           targetRepo: { owner, repo, branch },
-          images: files.map(file => {
+          images: group.files.map(file => {
             const fileTargetPath = file.targetPath || targetPath
             const fileSeries = file.targetSeries || series
             const pathParts = fileTargetPath.split('/')
@@ -201,7 +213,8 @@ export function createUploadSessionService({
             pendingPath,
             JSON.stringify(pendingData, null, 2),
             `Add pending metadata: ${pendingFilename}`,
-            groupSeries
+            group.series,
+            group.repoId
           )
           pendingPaths.push(pendingPath)
         } catch (error) {

@@ -39,6 +39,33 @@
           >
             {{ currentContextLabel }}
           </span>
+
+          <!-- 目标仓库：默认走 allocateRepo 自动推荐，可手动覆盖 -->
+          <div class="upload-view__repo">
+            <span class="upload-view__repo-title">目标仓库</span>
+            <el-select
+              v-model="targetRepoId"
+              size="small"
+              class="upload-view__repo-select"
+              placeholder="自动推荐"
+            >
+              <el-option
+                v-for="option in repoOptions"
+                :key="option.id || '__auto__'"
+                :value="option.id"
+                :label="option.label"
+                :disabled="option.disabled"
+              >
+                <div class="upload-view__repo-option">
+                  <span class="upload-view__repo-option-label">{{ option.label }}</span>
+                  <span class="upload-view__repo-option-hint">{{ option.hint }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <span class="upload-view__repo-capacity">
+              {{ currentRepoCapacity }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -252,7 +279,9 @@ import EditAIResultModal from '@/components/upload/EditAIResultModal.vue'
 import { githubService } from '@/services/github'
 import { localStorageService } from '@/services/localStorage'
 import { clearUploadCategoryTreeCache } from '@/services/upload/category-directory'
-import { resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import { resolveRepositoryRegistry, resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import { allocateRepo, listCandidates } from '@/features/upload-workspace/domain/repo-registry'
+import { formatRepoCapacity } from '@/features/upload-workspace/domain/repo-capacity'
 import { useConfigStore } from '@/stores/config'
 import { useUploadStore } from '@/stores/upload'
 import { useAuthStore } from '@/stores/auth'
@@ -323,6 +352,116 @@ const currentContextLabel = computed(() => {
 
   return `模型 · ${aiConfig.value?.modelName || 'AI 自动分类'}`
 })
+
+// ============ 目标仓库选择（自动推荐 + 手动可改） ============
+/** 生效的仓库注册表（用户配置 + 默认配置融合） */
+const registry = computed(() => resolveRepositoryRegistry(configStore.config))
+/** { [repoId]: { sizeKB, permissions, defaultBranch } | null }，null 表示该仓查询失败 */
+const repoSizeMap = ref({})
+/** '' = 跟随分配器自动推荐；非空 = 用户手动覆盖 */
+const targetRepoId = ref('')
+
+/** 当前 series 的候选仓库（enabled=true 且 accepts 命中），按 priority 升序 */
+const repoCandidates = computed(() => listCandidates(registry.value, series.value))
+
+/** 分配器推荐结果（按剩余容量 + priority） */
+const repoAutoContext = computed(() =>
+  allocateRepo(registry.value, series.value, {
+    sizeMap: repoSizeMap.value,
+    defaultRepoId: configStore.config.defaultRepoId || 'main'
+  })
+)
+
+/** 实际会写入的仓库 ID */
+const effectiveRepoId = computed(() => {
+  if (targetRepoId.value && repoCandidates.value.some(entry => entry.id === targetRepoId.value)) {
+    return targetRepoId.value
+  }
+
+  return repoAutoContext.value?.repoId || ''
+})
+
+const currentRepoEntry = computed(
+  () =>
+    repoCandidates.value.find(entry => entry.id === effectiveRepoId.value) ||
+    repoCandidates.value[0] ||
+    null
+)
+
+const repoOptions = computed(() => {
+  const auto = repoAutoContext.value
+  const autoOption = {
+    id: '',
+    label: auto ? `自动推荐 · ${auto.label}` : '自动推荐',
+    hint: auto ? `${auto.owner}/${auto.repo}` : '无可用仓库，请到系统设置添加',
+    disabled: !auto
+  }
+
+  return [
+    autoOption,
+    ...repoCandidates.value.map(entry => ({
+      id: entry.id,
+      label: entry.label,
+      hint: formatRepoCapacity(repoSizeMap.value, entry),
+      disabled: false
+    }))
+  ]
+})
+
+const currentRepoCapacity = computed(() => {
+  const entry = currentRepoEntry.value
+  if (!entry) return '无可用仓库'
+
+  const prefix = targetRepoId.value ? '手动指定' : '自动推荐'
+  return `${prefix} · ${formatRepoCapacity(repoSizeMap.value, entry)}`
+})
+
+/**
+ * 并发拉取候选仓库容量（getReposInfo 内部已带 5 分钟缓存）
+ * 容量只用于提示与自动选仓，失败时降级为「未知」，不阻塞上传
+ */
+async function loadRepoCapacity(force = false) {
+  const list = repoCandidates.value
+    .filter(entry => entry.owner && entry.repo)
+    .map(entry => ({ repoId: entry.id, owner: entry.owner, repo: entry.repo }))
+
+  if (!list.length) {
+    repoSizeMap.value = {}
+    return
+  }
+
+  if (force) {
+    githubService.clearReposInfoCache()
+  }
+
+  try {
+    const result = await githubService.getReposInfo(list)
+    repoSizeMap.value = { ...repoSizeMap.value, ...result }
+  } catch {
+    // 忽略：容量信息不可用时自动选仓会退化为按 priority 分配
+  }
+}
+
+/**
+ * 落到文件上的仓库 ID：空 / 非法 / 对当前 series 失效的选择一律降级为
+ * 空串（= 上传时再交给分配器自动决定），避免把图送进不接该系列的仓
+ * @returns {string}
+ */
+function resolveFileRepoId() {
+  const id = targetRepoId.value
+  return id && repoCandidates.value.some(entry => entry.id === id) ? id : ''
+}
+
+/** 把当前选择写到所有待上传文件上（空串 = 交给分配器在上传时自动决定） */
+function applyRepoSelectionToFiles() {
+  const repoId = resolveFileRepoId()
+
+  uploadStore.files.forEach(file => {
+    if (file.status === 'pending') {
+      file.targetRepoId = repoId
+    }
+  })
+}
 
 const SIDEBAR_COLLAPSED_HEIGHT = 52
 
@@ -585,6 +724,12 @@ async function addFiles(files) {
   }
 
   const added = await uploadStore.addFiles(imgs)
+  // 记录这批图的目标仓库：空串表示仍跟随分配器自动推荐（上传时才最终定仓）
+  const repoId = resolveFileRepoId()
+  added.forEach(file => {
+    file.targetRepoId = repoId
+  })
+
   if (added.length < imgs.length)
     ElMessage.warning(`${imgs.length - added.length} 个文件不符合要求`)
 }
@@ -641,6 +786,9 @@ function handleUploadResults(results, messagePrefix = '上传') {
   }
 
   refreshStats()
+
+  // 上传后仓库体积变了，刷新容量提示（下次自动选仓用得上）
+  loadRepoCapacity(true)
 
   // 刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
   if (ok > 0) {
@@ -1015,7 +1163,7 @@ onMounted(async () => {
     }
 
     // 2. 加载数据（并行执行）
-    await Promise.all([loadRootCategories(), refreshStats()])
+    await Promise.all([loadRootCategories(), refreshStats(), loadRepoCapacity()])
 
     await syncSidebarAccordion(false)
     window.addEventListener('resize', handleSidebarResize)
@@ -1049,6 +1197,18 @@ watch(series, async newSeries => {
   if (seriesRepo.repo && seriesRepo.repo !== configStore.config.repo) {
     await authStore.checkPermission(seriesRepo.owner, seriesRepo.repo)
   }
+
+  // 候选仓库随 series 变化：失效的手动选择回落到自动推荐，再刷新容量
+  if (targetRepoId.value && !repoCandidates.value.some(entry => entry.id === targetRepoId.value)) {
+    targetRepoId.value = ''
+  }
+
+  await loadRepoCapacity()
+})
+
+// 选择变化时同步到已排队文件；targetRepoId 被上面的 watch 清空时也会走到这里
+watch(targetRepoId, () => {
+  applyRepoSelectionToFiles()
 })
 watch(
   () => uploadStore.files,
@@ -1200,6 +1360,51 @@ watch(
       background: rgba($primary-start, 0.18);
       border-color: rgba($primary-start, 0.3);
     }
+  }
+
+  // 目标仓库选择器
+  &__repo {
+    display: flex;
+    align-items: center;
+    gap: $spacing-2;
+    padding: $spacing-1 $spacing-2;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: $radius-full;
+  }
+
+  &__repo-title {
+    font-size: $font-size-xs;
+    color: $gray-500;
+    white-space: nowrap;
+  }
+
+  &__repo-select {
+    width: 184px;
+  }
+
+  &__repo-capacity {
+    font-size: $font-size-xs;
+    color: $gray-400;
+    white-space: nowrap;
+  }
+
+  &__repo-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-3;
+    width: 100%;
+  }
+
+  &__repo-option-label {
+    font-size: $font-size-sm;
+  }
+
+  &__repo-option-hint {
+    font-size: $font-size-xs;
+    color: $gray-500;
+    font-family: monospace;
   }
 
   &__categories {
@@ -1476,6 +1681,12 @@ watch(
     &__meta-chip {
       width: 100%;
       border-radius: $radius-lg;
+    }
+
+    &__repo {
+      width: 100%;
+      border-radius: $radius-lg;
+      flex-wrap: wrap;
     }
 
     &__overview-header {
