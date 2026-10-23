@@ -40,14 +40,14 @@
             {{ currentContextLabel }}
           </span>
 
-          <!-- 目标仓库：默认走 allocateRepo 自动推荐，可手动覆盖 -->
+          <!-- 目标仓库：auto 模式默认走 allocateRepo 自动推荐、可手动覆盖；manual 模式必须显式选择 -->
           <div class="upload-view__repo">
             <span class="upload-view__repo-title">目标仓库</span>
             <el-select
               v-model="targetRepoId"
               size="small"
               class="upload-view__repo-select"
-              placeholder="自动推荐"
+              :placeholder="isManualAssignment ? '请选择目标仓库' : '自动推荐'"
             >
               <el-option
                 v-for="option in repoOptions"
@@ -195,6 +195,7 @@
             <WorkflowPanel
               :collapsed="activeSidebarPanel !== 'workflow'"
               :current-series="series"
+              :current-repo-id="currentRepoIdForPanel"
               class="upload-view__workflow"
               @toggle="openSidebarPanel('workflow')"
             />
@@ -353,9 +354,15 @@ const currentContextLabel = computed(() => {
   return `模型 · ${aiConfig.value?.modelName || 'AI 自动分类'}`
 })
 
-// ============ 目标仓库选择（自动推荐 + 手动可改） ============
+// ============ 目标仓库选择（自动推荐 + 手动可改 / 手动分配模式） ============
 /** 生效的仓库注册表（用户配置 + 默认配置融合） */
 const registry = computed(() => resolveRepositoryRegistry(configStore.config))
+/**
+ * 分配模式（系统设置里配置）：
+ * - 'auto'：默认跟随分配器推荐，用户可改（现状）
+ * - 'manual'：不预填推荐值，必须显式选择一个仓，未选择不允许上传
+ */
+const isManualAssignment = computed(() => configStore.config.assignment === 'manual')
 /** { [repoId]: { sizeKB, permissions, defaultBranch } | null }，null 表示该仓查询失败 */
 const repoSizeMap = ref({})
 /** '' = 跟随分配器自动推荐；非空 = 用户手动覆盖 */
@@ -372,14 +379,19 @@ const repoAutoContext = computed(() =>
   })
 )
 
-/** 实际会写入的仓库 ID */
+/** 实际会写入的仓库 ID（manual 模式不做自动兜底：未选择就是未选择） */
 const effectiveRepoId = computed(() => {
   if (targetRepoId.value && repoCandidates.value.some(entry => entry.id === targetRepoId.value)) {
     return targetRepoId.value
   }
 
+  if (isManualAssignment.value) return ''
+
   return repoAutoContext.value?.repoId || ''
 })
+
+/** 传给工作流面板的手动选仓（空串 = 跟随分配器自动推荐） */
+const currentRepoIdForPanel = computed(() => resolveFileRepoId())
 
 const currentRepoEntry = computed(
   () =>
@@ -389,6 +401,17 @@ const currentRepoEntry = computed(
 )
 
 const repoOptions = computed(() => {
+  // 「自动推荐」项仅在自动分配模式下提供；
+  // manual 模式要求显式选仓，不提供自动兜底选项
+  if (isManualAssignment.value) {
+    return repoCandidates.value.map(entry => ({
+      id: entry.id,
+      label: entry.label,
+      hint: formatRepoCapacity(repoSizeMap.value, entry),
+      disabled: false
+    }))
+  }
+
   const auto = repoAutoContext.value
   const autoOption = {
     id: '',
@@ -409,6 +432,9 @@ const repoOptions = computed(() => {
 })
 
 const currentRepoCapacity = computed(() => {
+  // manual 模式下未显式选仓时明确提示，而非展示自动推荐值
+  if (isManualAssignment.value && !effectiveRepoId.value) return '待选择 · 请选择目标仓库'
+
   const entry = currentRepoEntry.value
   if (!entry) return '无可用仓库'
 
@@ -806,6 +832,12 @@ function handleUploadResults(results, messagePrefix = '上传') {
 }
 
 async function handleUpload() {
+  // 手动分配模式：必须显式选择目标仓库，未选择不允许开始上传
+  if (isManualAssignment.value && !effectiveRepoId.value) {
+    ElMessage.error('当前为手动分配模式，请先选择目标仓库')
+    return
+  }
+
   // 检查是否有文件没有目标路径
   const filesWithoutTarget = uploadStore.pendingFiles.filter(f => !f.targetPath)
   if (filesWithoutTarget.length > 0) {

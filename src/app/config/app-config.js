@@ -1,7 +1,9 @@
 import {
   DEFAULT_REPOSITORY_REGISTRY,
   allocateRepo,
-  createRegistryFromLegacyConfig
+  createRegistryFromLegacyConfig,
+  deriveRollbackEvent,
+  resolveRepoRollbackEvent
 } from '@/features/upload-workspace/domain/repo-registry'
 
 const DEFAULT_REPO_ID = 'main'
@@ -135,5 +137,42 @@ export function resolveSeriesRepoForConfig(userConfig = {}, series = '', options
   return {
     owner: context?.owner ?? fallback.owner,
     repo: context?.repo ?? fallback.repo
+  }
+}
+
+/**
+ * 按 series 解析目标仓库的**完整上下文**（融合用户配置与仓库注册表）
+ *
+ * 与 `resolveSeriesRepoForConfig` 的区别：保留分配结果的 repoId / workflowEvent /
+ * rollbackEvent，供「上传页手动选仓」与「工作流面板触发/回滚」共用同一分配结果，
+ * 避免侧边栏面板还按分配器自动选仓、与用户手动选择的仓库不一致。
+ *
+ * @param {object} userConfig - configStore.config（localStorage 中的用户配置）
+ * @param {string} series
+ * @param {{ repoId?: string, sizeMap?: Record<string, number>, defaultRepoId?: string }} [options]
+ *        - repoId: 用户手动选择的目标仓库 ID，优先生效（allocateRepo 手动覆盖语义）
+ *        - sizeMap: { [repoId]: sizeKB } 容量数据，用于自动分配时的容量判断
+ *        - defaultRepoId: series 为空时的兜底仓库
+ * @returns {{ repoId: string, owner: string, repo: string, branch: string, workflowEvent: string, rollbackEvent: string, label: string } | null}
+ *          无任何可用仓库时返回 null
+ */
+export function resolveSeriesRepoContextForConfig(userConfig = {}, series = '', options = {}) {
+  const safeUserConfig = userConfig || {}
+  const registry = resolveRepositoryRegistry(safeUserConfig)
+  const merged = resolveAppConfig({ repository: safeUserConfig }).repository
+  const { repoId, sizeMap } = options
+  const defaultRepoId =
+    options.defaultRepoId || safeUserConfig.defaultRepoId || merged.defaultRepoId || DEFAULT_REPO_ID
+
+  // 手动选仓（repoId）优先；未传 / 非法时走 series 自动分配
+  const target = allocateRepo(registry, series, { repoId, sizeMap, defaultRepoId })
+  if (!target) return null
+
+  // allocateRepo 的上下文不带 rollbackEvent，按注册表条目补齐
+  // （resolveRepoRollbackEvent 不做 enabled 过滤：停用仓里的历史版本仍可回滚）
+  return {
+    ...target,
+    rollbackEvent:
+      resolveRepoRollbackEvent(registry, target.repoId) || deriveRollbackEvent(target.workflowEvent)
   }
 }

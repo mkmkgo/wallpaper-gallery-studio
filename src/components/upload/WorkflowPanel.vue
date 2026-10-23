@@ -257,17 +257,13 @@ import GlassCard from '@/components/GlassCard.vue'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
-import { resolveRepositoryRegistry, resolveSeriesRepoForConfig } from '@/app/config/app-config'
-import {
-  allocateRepo,
-  deriveRollbackEvent,
-  resolveRepoRollbackEvent
-} from '@/features/upload-workspace/domain/repo-registry'
-import { resolveSeriesWorkflowEvent } from '@/features/upload-workspace/domain/series-repo'
+import { resolveSeriesRepoContextForConfig } from '@/app/config/app-config'
 
 const props = defineProps({
   collapsed: { type: Boolean, default: false },
-  currentSeries: { type: String, default: 'desktop' }
+  currentSeries: { type: String, default: 'desktop' },
+  // 上传页手动选择的目标仓库 ID（'' = 未手动选择，由分配器自动推荐兜底）
+  currentRepoId: { type: String, default: '' }
 })
 
 defineEmits(['toggle'])
@@ -350,38 +346,23 @@ const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || LEGACY_WORKFLOW_REPO
 const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || LEGACY_FRONTEND_OWNER
 const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || LEGACY_FRONTEND_REPO
 
-function resolveImageRepo() {
-  return resolveSeriesRepoForConfig(configStore.config, props.currentSeries)
-}
-
 /**
- * 当前 series 命中的仓库 ID（用于取该仓对应的回滚事件名）
- * @returns {string}
+ * 当前生效的图床仓库完整上下文（与上传页「目标仓库」下拉框保持一致）：
+ * 用户手动选了仓（props.currentRepoId）就以它为准，否则走分配器自动推荐。
+ * 触发 / 回滚 / 待处理统计全部基于这一个上下文，避免选仓与流水线目标不一致。
+ * @returns {{ repoId, owner, repo, branch, workflowEvent, rollbackEvent, label } | null}
  */
-function resolveImageRepoId() {
-  const registry = resolveRepositoryRegistry(configStore.config)
-  return (
-    allocateRepo(registry, props.currentSeries, {
-      defaultRepoId: configStore.config.defaultRepoId || 'main'
-    })?.repoId || ''
-  )
-}
-
-/**
- * 回滚事件名：优先用注册表条目上的 rollbackEvent，
- * 兜底按 workflowEvent 推导（process-wallpapers-x → rollback-release-x）
- * @returns {string}
- */
-function resolveRollbackEvent() {
-  const registry = resolveRepositoryRegistry(configStore.config)
-  const event = resolveRepoRollbackEvent(registry, resolveImageRepoId())
-
-  if (event) return event
-  return deriveRollbackEvent(resolveSeriesWorkflowEvent(props.currentSeries))
+function resolveImageRepoContext() {
+  return resolveSeriesRepoContextForConfig(configStore.config, props.currentSeries, {
+    repoId: props.currentRepoId,
+    defaultRepoId: configStore.config.defaultRepoId || 'main'
+  })
 }
 
 async function refresh() {
-  const { owner, repo } = resolveImageRepo()
+  const context = resolveImageRepoContext()
+  const owner = context?.owner ?? configStore.config.owner
+  const repo = context?.repo ?? configStore.config.repo
   const { branch } = configStore.config
   try {
     const tasks = [
@@ -404,6 +385,12 @@ async function handleTrigger() {
     ElMessage.warning('未配置工作流仓库，请先配置 VITE_WORKFLOW_OWNER 和 VITE_WORKFLOW_REPO')
     return
   }
+  // 触发目标仓 = 上传页当前生效的仓（手动选择优先，否则分配器推荐）
+  const context = resolveImageRepoContext()
+  if (!context) {
+    ElMessage.error('未找到可用的目标仓库，请先到系统设置配置仓库注册表')
+    return
+  }
   try {
     const publisher = authStore.user?.login || ''
     await workflowStore.triggerWorkflow(
@@ -411,7 +398,7 @@ async function handleTrigger() {
       WORKFLOW_REPO,
       '',
       publisher,
-      resolveSeriesWorkflowEvent(props.currentSeries)
+      context.workflowEvent
     )
     ElMessage.success('工作流已触发，正在处理中...')
     setTimeout(() => {
@@ -449,6 +436,13 @@ async function handleRollback() {
     return
   }
 
+  // 回滚目标仓 = 上传页当前生效的仓（手动选择优先，否则分配器推荐）
+  const context = resolveImageRepoContext()
+  if (!context) {
+    ElMessage.error('未找到可用的目标仓库，请先到系统设置配置仓库注册表')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要回滚版本 ${tagName} 吗？\n\n这将：\n• 删除该版本新增的壁纸文件\n• 更新时间戳和统计数据\n• 删除 tag 和 release\n\n注意：不会影响 Bing 每日同步的数据`,
@@ -462,14 +456,13 @@ async function handleRollback() {
     )
 
     rolling.value = true
-    const { owner, repo } = resolveImageRepo()
     const result = await workflowStore.rollbackLastRelease(
-      owner,
-      repo,
+      context.owner,
+      context.repo,
       WORKFLOW_OWNER,
       WORKFLOW_REPO,
       tagName,
-      resolveRollbackEvent()
+      context.rollbackEvent
     )
 
     ElMessage.success(`回滚工作流已触发，正在处理 ${result.deletedTag}...`)
@@ -573,18 +566,18 @@ function formatDate(dateStr) {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
-// series 切换时刷新待处理/统计（触发/回滚均按当前系列打对应仓）
-watch(
-  () => props.currentSeries,
-  () => {
-    refresh()
-  }
-)
+// series / 手动选仓变化时刷新待处理/统计（触发/回滚均按当前生效的仓打）
+watch([() => props.currentSeries, () => props.currentRepoId], () => {
+  refresh()
+})
 
 onMounted(() => {
-  const { owner, repo } = resolveImageRepo()
-  const { branch } = configStore.config
-  workflowStore.setImageRepoConfig(owner, repo, branch)
+  const context = resolveImageRepoContext()
+  workflowStore.setImageRepoConfig(
+    context?.owner ?? configStore.config.owner,
+    context?.repo ?? configStore.config.repo,
+    configStore.config.branch
+  )
   refresh()
 })
 
