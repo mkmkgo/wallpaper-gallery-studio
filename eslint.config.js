@@ -61,10 +61,12 @@ export default [
     }
   },
   {
-    // EdgeOne Edge Function：运行在 V8 隔离运行时（Web 标准 API），
-    // 环境变量经 context.env 注入；手写白名单需在此补齐运行时全局，
+    // EdgeOne Makers Cloud Function（Node 20 运行时，Web 标准 API + Node 全局），
+    // 环境变量经 context.env / process.env 注入；手写白名单需在此补齐运行时全局，
     // 否则 pre-commit 的 lint-staged 会误报 no-undef。
-    files: ['edge-functions/**/*.js'],
+    // 注意：根级 cloud-functions/[[default]].js 是 Makers 启用 Node 函数的
+    // server-handler 入口，缺失会把项目降级为纯静态站。
+    files: ['cloud-functions/**/*.js'],
     languageOptions: {
       globals: {
         Request: 'readonly',
