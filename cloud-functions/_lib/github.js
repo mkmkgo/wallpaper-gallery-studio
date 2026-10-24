@@ -6,8 +6,6 @@
 //   cloud-functions/api/ping-github/index.js   （精确路由 /api/ping-github）
 //   cloud-functions/[[default]].js             （catch-all 兜底/双保险）
 
-import { SPA_SHELL_HTML } from './spa-shell.js'
-
 export const TOKEN_URL = 'https://github.com/login/oauth/access_token'
 export const UPSTREAM_TIMEOUT_MS = 15000
 
@@ -134,21 +132,9 @@ export async function handlePing() {
   }
 }
 
-// ---- SPA 入口兜底：浏览器导航请求返回 index.html 页面壳 ----
-// catch-all 会接管前端路由（/callback、/login 等），必须返回真正的
-// index.html 页面壳，否则 Vue Router 拿不到页面、登录回调丢失 code。
-//
-// 早期实现用「函数内 fetch 自己的 /index.html」（self-fetch），实测在
-// EdgeOne 上 self-fetch 失败，会退到最小兜底页（meta refresh 跳 /），
-// 导致 /callback?code=xxx 被跳回首页、登录必失败。
-// 改为构建期内联：dist/index.html 的内容在构建时被写进
-// _lib/spa-shell.js（由 vite 插件覆盖），这里直接返回，零运行时依赖。
-export function handleSpaShell() {
-  return new Response(SPA_SHELL_HTML, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache'
-    }
-  })
-}
+// 注：这里曾经有 handleSpaShell（catch-all 返回 SPA 页面壳），现已移除。
+// 原因：平台实际使用「仓库根目录」的 cloud-functions 源码，不会用构建产物
+// dist 里的内联 HTML，导致 catch-all 只能返回源码里的占位内容，
+// /callback 显示「页面加载中」、登录卡住。
+// 现在 SPA 路由交给静态层（平台原生 SPA 回退 + 根级 middleware.js 兜底），
+// 函数只负责 /api/*（见 cloud-functions/api/ 下的精确路由）。
