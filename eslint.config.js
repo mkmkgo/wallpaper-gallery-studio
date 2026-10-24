@@ -64,7 +64,7 @@ export default [
     // EdgeOne Pages Cloud Function：运行在 Node 20 + Web 标准运行时，
     // 自带 Response / Request / Headers / AbortController / process 等全局，
     // 手写白名单需在此补齐，否则 pre-commit 的 lint-staged 会误报 no-undef。
-    files: ['cloud-functions/**/*.js'],
+    files: ['node-functions/**/*.js'],
     languageOptions: {
       globals: {
         Request: 'readonly',
