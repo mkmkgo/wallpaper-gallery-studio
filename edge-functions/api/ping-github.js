@@ -1,10 +1,12 @@
-// Cloud Function (Node.js 20) —— 路由: /api/ping-github
+// Edge Function（EdgeOne Pages/Makers edge-functions，V8 运行时）—— 路由: /api/ping-github
 //
-// 一次性探针：验证 EdgeOne 的 Cloud Function 运行时能否连到 GitHub 的
-// 换 token 接口。中国大陆地域的 Serverless 出网到 github.com 并不保证稳定，
-// 部署后请先在浏览器打开 https://你的域名/api/ping-github 看结果：
-//   ok: true  → 出网正常，可以配 OAuth 登录
+// 一次性探针：验证 EdgeOne Edge Function 运行时能否连到 GitHub 的换 token 接口。
+// 中国大陆地域的 Serverless 出网到 github.com 并不保证稳定，部署后先开
+// https://你的域名/api/ping-github 看结果：
+//   ok: true  → 函数已部署且出网正常，可以配 OAuth 登录
 //   ok: false → 该地域连不上 GitHub，需要换加速区域/地域，或改回其他换 token 通道
+// 若返回的是 HTML（<!doctype ...）而不是本 JSON，说明函数根本没被部署
+// （目录名不对 / 功能未开通），先解决部署问题再看出网。
 // 确认没问题后，这个探针函数可以随时删掉。
 
 const TARGET = 'https://github.com/login/oauth/access_token'
@@ -20,7 +22,7 @@ function json(body, status = 200) {
   })
 }
 
-export async function onRequest() {
+export async function onRequestGet() {
   const started = Date.now()
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
@@ -32,7 +34,7 @@ export async function onRequest() {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        'User-Agent': 'edgeone-makers-probe'
+        'User-Agent': 'edgeone-probe'
       },
       body: JSON.stringify({ client_id: 'probe', client_secret: 'probe', code: 'probe' }),
       signal: ac.signal
@@ -42,7 +44,7 @@ export async function onRequest() {
 
     return json({
       ok: true,
-      message: 'Cloud Function 出网到 GitHub 正常',
+      message: 'Edge Function 出网到 GitHub 正常',
       upstreamStatus: res.status,
       elapsedMs: Date.now() - started,
       upstreamBody: text.slice(0, 200)
@@ -54,7 +56,7 @@ export async function onRequest() {
     return json(
       {
         ok: false,
-        message: 'Cloud Function 连不上 GitHub，该地域出网受限',
+        message: 'Edge Function 连不上 GitHub，该地域出网受限',
         error: msg,
         elapsedMs: Date.now() - started
       },

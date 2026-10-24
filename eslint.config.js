@@ -61,10 +61,10 @@ export default [
     }
   },
   {
-    // EdgeOne Pages Cloud Function：运行在 Node 20 + Web 标准运行时，
-    // 自带 Response / Request / Headers / AbortController / process 等全局，
-    // 手写白名单需在此补齐，否则 pre-commit 的 lint-staged 会误报 no-undef。
-    files: ['node-functions/**/*.js'],
+    // EdgeOne Edge Function：运行在 V8 隔离运行时（Web 标准 API），
+    // 环境变量经 context.env 注入；手写白名单需在此补齐运行时全局，
+    // 否则 pre-commit 的 lint-staged 会误报 no-undef。
+    files: ['edge-functions/**/*.js'],
     languageOptions: {
       globals: {
         Request: 'readonly',
