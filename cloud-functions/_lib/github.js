@@ -20,11 +20,13 @@ export function json(body, status = 200) {
 }
 
 // Makers 运行时把项目环境变量挂在 context.env 上；Node 运行时另注入 process.env，一并兜住
+// 注意：值统一 trim —— 从 GitHub 页面复制 client_id / secret 时很容易带上
+// 首尾空格或换行，GitHub 会直接判为凭证不正确（incorrect_client_credentials）。
 export function readEnv(context, key) {
   const fromContext = context && context.env ? context.env[key] : ''
-  if (fromContext) return fromContext
+  if (fromContext) return String(fromContext).trim()
   if (typeof process !== 'undefined' && process && process.env && process.env[key]) {
-    return process.env[key]
+    return String(process.env[key]).trim()
   }
   return ''
 }
@@ -87,7 +89,7 @@ export async function handleOAuth(context) {
 }
 
 // ---- /api/ping-github：出网探针 ----
-export async function handlePing() {
+export async function handlePing(context) {
   const started = Date.now()
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS)
@@ -107,11 +109,25 @@ export async function handlePing() {
     const text = await res.text()
     clearTimeout(timer)
 
+    // 诊断信息：只暴露 client_id 的前缀与长度、secret 的长度，
+    // 绝不返回密钥本体。用于核对服务端读到的环境变量是否正确。
+    const clientId = readEnv(context, 'GITHUB_CLIENT_ID')
+    const clientSecret = readEnv(context, 'GITHUB_CLIENT_SECRET')
+
     return json({
       ok: true,
       message: 'Node 函数已部署且出网到 GitHub 正常',
       upstreamStatus: res.status,
       elapsedMs: Date.now() - started,
+      env: {
+        clientIdConfigured: !!clientId,
+        // client_id 前 8 位，用于核对是否为 Ov23li...(注意第 9 位是数字 0 不是字母 O)
+        clientIdPrefix: clientId ? clientId.slice(0, 8) : '',
+        clientIdLength: clientId ? clientId.length : 0,
+        secretConfigured: !!clientSecret,
+        // GitHub client_secret 为 40 位十六进制，长度不对说明复制有问题
+        secretLength: clientSecret ? clientSecret.length : 0
+      },
       upstreamBody: text.slice(0, 200)
     })
   } catch (e) {

@@ -8,10 +8,10 @@
 
 import { handlePing } from '../../_lib/github.js'
 
-export async function onRequestGet() {
-  return handlePing()
+export async function onRequestGet(context) {
+  return handlePing(context)
 }
 
-export async function onRequest() {
-  return handlePing()
+export async function onRequest(context) {
+  return handlePing(context)
 }
