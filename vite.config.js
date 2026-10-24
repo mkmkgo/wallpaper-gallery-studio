@@ -4,11 +4,16 @@ import { fileURLToPath, URL } from 'node:url'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import makersFunctions from './scripts/vite-plugin-makers-functions.js'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    // EdgeOne Makers 在部署产物目录（dist）里发现函数，vite build 默认不会
+    // 把仓库根的 cloud-functions/ 带进去，缺了它平台判定为纯静态站，
+    // /api/* 会被 SPA 兜底成 index.html（前端报 Unexpected token '<'）。
+    makersFunctions(),
     AutoImport({
       imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
       resolvers: [ElementPlusResolver()],
