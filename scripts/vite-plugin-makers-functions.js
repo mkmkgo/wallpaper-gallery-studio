@@ -16,11 +16,13 @@
 //
 // 同时复制 middleware.js（若存在）：根级中间件负责 SPA 路由回退。
 
-import { cpSync, existsSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const FUNCTION_DIRS = ['cloud-functions', 'edge-functions']
 const ROOT_FILES = ['middleware.js']
+// 构建期把真实 index.html 内联进函数包，供 catch-all 返回 SPA 页面壳
+const SPA_SHELL_REL = 'cloud-functions/_lib/spa-shell.js'
 
 export default function makersFunctions() {
   let root = process.cwd()
@@ -48,6 +50,16 @@ export default function makersFunctions() {
         if (!existsSync(src)) continue
         cpSync(src, resolve(target, file))
         this.info(`[makers] 已复制 ${file} -> ${outDir}/${file}`)
+      }
+
+      // 把真实的 index.html 内联成 SPA 页面壳，覆盖源码里的占位文件。
+      // 用 JSON.stringify 生成字符串字面量，自动处理引号/换行/反斜杠转义。
+      const indexHtml = resolve(target, 'index.html')
+      const shellDest = resolve(target, SPA_SHELL_REL)
+      if (existsSync(indexHtml)) {
+        const html = readFileSync(indexHtml, 'utf8')
+        writeFileSync(shellDest, `export const SPA_SHELL_HTML = ${JSON.stringify(html)}\n`, 'utf8')
+        this.info(`[makers] 已内联 index.html -> ${outDir}/${SPA_SHELL_REL}`)
       }
     }
   }
