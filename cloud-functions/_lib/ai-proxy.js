@@ -40,12 +40,17 @@ function json(body, status = 200) {
 }
 
 export async function handleAiProxy(request, provider) {
+  // 防御：入口文件必须传 context.request（见路由文件顶部注释）；
+  // 若误传 context，request.method 为 undefined，这里统一转大写后判断，
+  // 避免「POST 也返回 405」这类静默错分支。
+  const method = String(request?.method || '').toUpperCase()
+
   // 1) CORS 预检（同源其实不会来，防御性保留）
-  if (request.method === 'OPTIONS') {
+  if (method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS })
   }
 
-  if (request.method !== 'POST') {
+  if (method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405)
   }
 

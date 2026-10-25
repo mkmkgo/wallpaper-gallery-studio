@@ -11,15 +11,20 @@
 //
 // 逻辑放在 _lib/ai-proxy.js（不导出 handler 的辅助模块），此处只做路由绑定。
 
+// ⚠️ 坑（2026-10-25 实测）：EdgeOne handler 的第一个参数是 context，
+// 真正的 Request 在 context.request 上（同 _lib/github.js:36 的写法）。
+// 若把第一个参数直接当 request 用，request.method 是 undefined，
+// POST 也会掉进 405 分支（线上实测：POST/OPTIONS 全返回 Method not allowed）。
+
 import { handleAiProxy } from '../../../../../_lib/ai-proxy.js'
 
 // 正常流程：前端 POST（Authorization 头透传智谱 API Key）
-export async function onRequestPost(request) {
-  return handleAiProxy(request, 'zhipu')
+export async function onRequestPost(context) {
+  return handleAiProxy(context.request, 'zhipu')
 }
 
 // 兜底：其它方法也交给 handleAiProxy 统一处理
 // （OPTIONS 预检 / 405 / 401 / 未知 provider 等分支都在那里）
-export async function onRequest(request) {
-  return handleAiProxy(request, 'zhipu')
+export async function onRequest(context) {
+  return handleAiProxy(context.request, 'zhipu')
 }
