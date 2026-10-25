@@ -9,6 +9,12 @@ import { useConfigStore } from '@/stores/config'
 const SERIES_KEYS = ['desktop', 'mobile', 'avatar']
 const CACHE_TTL = 5 * 60 * 1000
 
+// [LOCAL] 合规过滤（2026-10-25）：政治类内容不适合壁纸产品，与小程序
+// miniprogram-wallpaper/config/index.js 的 BLOCKED_CATEGORIES 保持同款。
+// 动态分类树有三条来源（manifest / GitHub 目录扫描 / 本地回退），
+// 任一条漏掉都会让 AI prompt 重新带上政治分类，故在出口统一收口。
+const BLOCKED_CATEGORIES = ['政治']
+
 let categoryDirectoryCache = null
 let categoryDirectoryTimestamp = 0
 let pendingRequest = null
@@ -26,7 +32,9 @@ export function getFallbackUploadCategoryTree() {
   const result = {}
 
   SERIES_KEYS.forEach(seriesKey => {
-    const secondary = (CATEGORIES[seriesKey]?.subcategories || []).map(item => item.value)
+    const secondary = (CATEGORIES[seriesKey]?.subcategories || [])
+      .map(item => item.value)
+      .filter(value => !BLOCKED_CATEGORIES.includes(value))
     const third = {}
 
     secondary.forEach(category => {
@@ -47,6 +55,43 @@ export function getFallbackUploadCategoryTree() {
 
 function cloneCategoryTree(tree) {
   return JSON.parse(JSON.stringify(tree))
+}
+
+/**
+ * 合规收口：剔除动态分类树中的黑名单分类。
+ * 树结构为 { [seriesKey]: { secondary: string[], third: { [secondary]: string[] } } }，
+ * 同时清理 secondary 数组与 third 中对应的键。
+ */
+export function applyCategoryBlocklist(tree) {
+  if (!tree || typeof tree !== 'object') {
+    return tree
+  }
+
+  const filtered = {}
+
+  for (const [seriesKey, seriesTree] of Object.entries(tree)) {
+    if (!seriesTree || typeof seriesTree !== 'object') {
+      filtered[seriesKey] = seriesTree
+      continue
+    }
+
+    const secondary = Array.isArray(seriesTree.secondary)
+      ? seriesTree.secondary.filter(name => !BLOCKED_CATEGORIES.includes(name))
+      : seriesTree.secondary
+
+    const third = {}
+    if (seriesTree.third && typeof seriesTree.third === 'object') {
+      for (const [category, items] of Object.entries(seriesTree.third)) {
+        if (!BLOCKED_CATEGORIES.includes(category)) {
+          third[category] = items
+        }
+      }
+    }
+
+    filtered[seriesKey] = { ...seriesTree, secondary, third }
+  }
+
+  return filtered
 }
 
 async function fetchUploadCategoryTree(force = false) {
@@ -136,13 +181,13 @@ export async function getUploadCategoryTree({ force = false } = {}) {
   }
 
   if (!force && pendingRequest) {
-    return pendingRequest.then(cloneCategoryTree)
+    return pendingRequest.then(tree => cloneCategoryTree(applyCategoryBlocklist(tree)))
   }
 
   pendingRequest = fetchUploadCategoryTree(force)
 
   try {
-    const categoryTree = await pendingRequest
+    const categoryTree = applyCategoryBlocklist(await pendingRequest)
     categoryDirectoryCache = cloneCategoryTree(categoryTree)
     categoryDirectoryTimestamp = Date.now()
     return cloneCategoryTree(categoryTree)

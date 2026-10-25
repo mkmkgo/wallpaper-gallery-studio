@@ -15,7 +15,6 @@ export const CATEGORIES = {
       { value: '人像', label: '人像', description: '真人照片、人物摄影' },
       { value: '影视', label: '影视', description: '电影、电视剧相关' },
       { value: '游戏', label: '游戏', description: '游戏截图、游戏角色' },
-      { value: '政治', label: '政治', description: '政治人物、国家元首' },
       { value: 'IP形象', label: 'IP形象', description: '品牌IP、卡通形象' }
     ]
   },
