@@ -9,26 +9,54 @@ const zhipuRateLimiter = createZhipuRateLimiter()
  * 免费模型：glm-4v-flash（直接回答）、glm-4.1v-thinking-flash（带推理）
  */
 /**
- * [LOCAL] 自建 CORS 代理地址
+ * [LOCAL] AI 接口代理地址
  * 浏览器直连 https://open.bigmodel.cn 会被 CORS 拦截（服务端 curl 正常、
- * 浏览器拿不到 Access-Control-Allow-Origin），必须经自建 Worker 中转。
- * 见 worker/ai-cors-proxy.js。
- * 需要改回直连时，用环境变量 VITE_ZHIPU_BASE_URL 覆盖即可。
+ * 浏览器拿不到 Access-Control-Allow-Origin），必须经代理中转。
+ *
+ * 默认走【同源 EdgeOne Pages 函数】'/api/ai-proxy/zhipu'（路由见
+ * cloud-functions/api/ai-proxy/zhipu/chat/completions/index.js，逻辑在
+ * cloud-functions/_lib/ai-proxy.js）：相对路径挂在 studio 自己域名下，
+ * 换域名不用改代码，同源之后连 CORS 预检都不存在。
+ *
+ * 教训：曾默认走 Cloudflare Worker（wallpaper-ai-proxy.1109008002.workers.dev），
+ * workers.dev 是 CF 公共边缘域名、IP 段在大陆被 GFW 精准阻断（移动必挂、
+ * 电信联通看脸），用户两台电脑一台能连一台报 "Failed to fetch"，现已降级
+ * 为备用通道。想改回直连或 Worker，用环境变量 VITE_ZHIPU_BASE_URL 覆盖即可。
  */
-const PROXY_HOST = 'https://wallpaper-ai-proxy.1109008002.workers.dev'
-const DEFAULT_ZHIPU_BASE_URL = 'https://wallpaper-ai-proxy.1109008002.workers.dev/zhipu'
+const DEFAULT_ZHIPU_BASE_URL = '/api/ai-proxy/zhipu'
+
+// 备用通道：同源函数地域抽风时切回 Cloudflare Worker。
+// 注意 workers.dev 国内被墙，这条只适合海外/代理环境，放这儿是双保险。
+// 可用 VITE_ZHIPU_FALLBACK_URLS（逗号分隔）覆盖。
+const WORKER_PROXY_HOST = 'https://wallpaper-ai-proxy.1109008002.workers.dev'
+const DEFAULT_ZHIPU_FALLBACK_URLS = [`${WORKER_PROXY_HOST}/zhipu`]
+
+function splitFallbacks(raw) {
+  return String(raw || '')
+    .split(',')
+    .map(item => item.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
+}
 
 /**
- * 归一化代理地址：确保以 /zhipu 结尾。
- * Worker 靠 URL 首段路径识别厂商，少了 /zhipu 会返回「未知的 provider」。
- * 环境变量填成裸 host（...workers.dev）或未填时，这里自动补齐。
+ * 归一化代理地址：
+ * - 相对路径（以 / 开头，即同源 EdgeOne 函数）：原样返回
+ * - 裸 workers.dev host：自动补 /zhipu（Worker 靠 URL 首段路径识别厂商，
+ *   少了 /zhipu 会返回「未知的 provider」）
+ * - 未填：用默认值（同源函数）
  */
 function normalizeZhipuBase(raw) {
   const trimmed = String(raw || '')
     .trim()
     .replace(/\/+$/, '')
-  if (!trimmed || trimmed === PROXY_HOST) {
+  if (!trimmed) {
     return DEFAULT_ZHIPU_BASE_URL
+  }
+  if (trimmed.startsWith('/')) {
+    return trimmed
+  }
+  if (trimmed === WORKER_PROXY_HOST) {
+    return `${WORKER_PROXY_HOST}/zhipu`
   }
   return trimmed
 }
@@ -37,7 +65,12 @@ export class ZhipuProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config)
     // 智谱 BigModel 官方 API，OpenAI 兼容协议
+    // 地址优先级：config.baseUrl → VITE_ZHIPU_BASE_URL → 同源函数默认值
     this.baseUrl = config.baseUrl || normalizeZhipuBase(import.meta.env.VITE_ZHIPU_BASE_URL)
+    this.fallbackBaseUrls = splitFallbacks(import.meta.env.VITE_ZHIPU_FALLBACK_URLS)
+    if (this.fallbackBaseUrls.length === 0) {
+      this.fallbackBaseUrls = DEFAULT_ZHIPU_FALLBACK_URLS
+    }
   }
 
   validateCredentials(credentials) {
@@ -64,69 +97,94 @@ export class ZhipuProvider extends BaseAIProvider {
       imageUrl = `data:image/jpeg;base64,${imageBase64}`
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl
-                }
+    const requestBody = JSON.stringify({
+      model: model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: prompt
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageUrl
               }
-            ]
-          }
-        ],
-        temperature: 0.7,
-        // glm-4v-flash 免费模型 max_tokens 上限为 1024
-        max_tokens: 1024
-      })
+            }
+          ]
+        }
+      ],
+      temperature: 0.7,
+      // glm-4v-flash 免费模型 max_tokens 上限为 1024
+      max_tokens: 1024
     })
 
-    if (!response.ok) {
-      let errorMessage = `Zhipu API error: ${response.status}`
-      let errorData = null
+    // 故障转移：主地址（同源 EdgeOne 函数）→ 备用地址（Cloudflare Worker）。
+    // 触发条件：fetch 抛网络异常（TypeError / Failed to fetch，典型如
+    // workers.dev 被墙时请求根本发不出去）或上游 5xx（函数地域抖动）。
+    // 4xx 不转移——同样的 key 换通道也是同样的错，让下面的错误码处理生效。
+    const candidates = [this.baseUrl, ...this.fallbackBaseUrls.filter(url => url !== this.baseUrl)]
+    let lastNetworkError = null
+
+    for (const baseUrl of candidates) {
+      let response
       try {
-        errorData = await response.json()
-        errorMessage = errorData.error?.message || errorData.message || errorMessage
-        console.error('Zhipu API Error Details:', errorData)
-      } catch {
-        const text = await response.text().catch(() => '')
-        console.error('Zhipu API Error Text:', text)
-        if (text) errorMessage += ` - ${text}`
+        response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: requestBody
+        })
+      } catch (error) {
+        lastNetworkError = error
+        continue
       }
 
-      // 智谱特定错误码处理
-      const errorCode = errorData?.error?.code
-      if (response.status === 401 || errorCode === '1001') {
-        errorMessage = '智谱 API Key 无效或已过期。请检查您的 API Key 是否正确配置。'
-      } else if (errorCode === '1113') {
-        errorMessage =
-          '智谱账户余额不足或无可用资源包。免费模型请使用 glm-4v-flash / glm-4.1v-thinking-flash。'
-      } else if (errorCode === '1210') {
-        errorMessage = '智谱图片解析失败：图片格式不支持或文件损坏。'
-      } else if (response.status === 429 || errorCode === '1302') {
-        // 保留原始 errorMessage（含重试提示），让 RateLimiter 能解析并自动重试
-        errorMessage = `API 请求频率超限: ${errorMessage}`
+      if (response.status >= 500) {
+        lastNetworkError = new Error(`Zhipu proxy error: ${response.status} (${baseUrl})`)
+        continue
       }
 
-      throw new Error(errorMessage)
+      if (!response.ok) {
+        let errorMessage = `Zhipu API error: ${response.status}`
+        let errorData = null
+        try {
+          errorData = await response.json()
+          errorMessage = errorData.error?.message || errorData.message || errorMessage
+          console.error('Zhipu API Error Details:', errorData)
+        } catch {
+          const text = await response.text().catch(() => '')
+          console.error('Zhipu API Error Text:', text)
+          if (text) errorMessage += ` - ${text}`
+        }
+
+        // 智谱特定错误码处理
+        const errorCode = errorData?.error?.code
+        if (response.status === 401 || errorCode === '1001') {
+          errorMessage = '智谱 API Key 无效或已过期。请检查您的 API Key 是否正确配置。'
+        } else if (errorCode === '1113') {
+          errorMessage =
+            '智谱账户余额不足或无可用资源包。免费模型请使用 glm-4v-flash / glm-4.1v-thinking-flash。'
+        } else if (errorCode === '1210') {
+          errorMessage = '智谱图片解析失败：图片格式不支持或文件损坏。'
+        } else if (response.status === 429 || errorCode === '1302') {
+          // 保留原始 errorMessage（含重试提示），让 RateLimiter 能解析并自动重试
+          errorMessage = `API 请求频率超限: ${errorMessage}`
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+      return this.parseResponse(data)
     }
 
-    const data = await response.json()
-    return this.parseResponse(data)
+    // 所有候选通道都失败：抛出最后一次网络错误
+    throw lastNetworkError || new Error('所有智谱代理通道均不可用')
   }
 
   parseResponse(data) {
