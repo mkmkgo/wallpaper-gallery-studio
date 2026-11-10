@@ -83,7 +83,11 @@ export function applyCategoryBlocklist(tree) {
     if (seriesTree.third && typeof seriesTree.third === 'object') {
       for (const [category, items] of Object.entries(seriesTree.third)) {
         if (!BLOCKED_CATEGORIES.includes(category)) {
-          third[category] = items
+          // 不仅清键，还要过滤数组内的同名项：动态目录扫描可能把黑名单项
+          // 作为三级分类名混进数组，只清键会漏掉这类残留。
+          third[category] = Array.isArray(items)
+            ? items.filter(item => !BLOCKED_CATEGORIES.includes(item))
+            : items
         }
       }
     }

@@ -21,6 +21,9 @@ const AI_COMPLETED_STATUS = 'completed'
  */
 export function isUploadableFile(file) {
   if (!file || file.status !== 'pending' || !file.targetPath) return false
+  // 合规闸门：被拒文件必须进 skippedFiles，绝不进入上传集合（即使预选了分类、
+  // 已有 targetPath，且 AI 任务显示完成，也不得放行）。
+  if (file.complianceRejected) return false
   if (file.aiMetadata?.error) return false
   if (file.aiTaskId && file.aiTaskStatus !== AI_COMPLETED_STATUS) return false
   return true

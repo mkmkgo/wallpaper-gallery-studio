@@ -1,4 +1,5 @@
 import { defineStore, storeToRefs } from 'pinia'
+import { ElMessage } from 'element-plus'
 import { githubService } from '@/services/github'
 import { resolveAppConfig } from '@/app/config/app-config'
 import { createUploadFileLifecycleService } from '@/features/upload-workspace/application/create-upload-file-lifecycle-service'
@@ -21,6 +22,7 @@ import {
   getModelList,
   getRecommendedModel
 } from '@/services/ai/classifier'
+import { validateAiResult } from '@/services/ai/compliance'
 
 // 允许的文件类型
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -374,8 +376,39 @@ export const useUploadStore = defineStore('upload', () => {
     metadataStatus.value = 'idle'
     metadataError.value = null
     const pending = uploadableFiles.value
+
+    // 上传前闸门：对最终值 + targetPath + 文件名再跑一次完整校验，
+    // 命中即从待上传集合剔除并提示，绝不进入上传链路。
+    const compliantPending = []
+    let blockedCount = 0
+    for (const file of pending) {
+      const verdict = validateAiResult({
+        ...(file.aiMetadata || {}),
+        filename: file.name,
+        path: file.targetPath || targetPath.value,
+        category: file.targetL1 || '',
+        subcategory: file.targetL2 || ''
+      })
+      if (verdict.rejected || file.complianceRejected) {
+        file.complianceRejected = true
+        file.complianceReasonCode = verdict.reasonCode || file.complianceReasonCode || null
+        blockedCount++
+        continue
+      }
+      compliantPending.push(file)
+    }
+    if (blockedCount > 0) {
+      ElMessage.warning(`已阻止 ${blockedCount} 张不合规图片上传`)
+    }
+    if (compliantPending.length === 0) {
+      currentFileIndex.value = -1
+      uploading.value = false
+      metadataStatus.value = 'idle'
+      return { results: [], permissionError: false, metadataResult: null }
+    }
+
     const { results, uploadedFiles, permissionError } =
-      await uploadSessionService.uploadPendingFiles(pending, {
+      await uploadSessionService.uploadPendingFiles(compliantPending, {
         uploadDelayMs: UPLOAD_DELAY,
         targetPath: targetPath.value,
         series: series.value,

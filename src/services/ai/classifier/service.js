@@ -7,6 +7,7 @@ import { AIProviderFactory, compressImage, IMAGE_CONFIG } from '../core'
 import { buildPromptWithLatestCategories, validatePrompt } from './prompts'
 import { getModelByKey } from './config'
 import { createGroqRateLimiter, createModelScopeRateLimiter } from '@/utils/rateLimiter'
+import { validateAiResult, detectModelRejection } from '@/services/ai/compliance'
 
 // 为不同 provider 创建速率限制器
 const rateLimiters = {
@@ -64,17 +65,66 @@ export async function analyzeImage({
       }
     })
 
-    return {
+    // 合规闸门（所有 provider 的统一出口）：provider 兜底生成的文件名、
+    // 以及组装出的全部文本字段，都在此处统一校验，避免任一 provider 漏检。
+    const modelRejection = detectModelRejection(analysis)
+    const candidate = {
+      category: analysis.secondary,
+      subcategory: analysis.third,
+      filename: analysis.filenameSuggestions?.[0] || '',
+      filenames: analysis.filenameSuggestions || [],
+      filenameSuggestions: analysis.filenameSuggestions || [],
       secondary: analysis.secondary,
       third: analysis.third,
-      filenameSuggestions: analysis.filenameSuggestions || [],
+      displayTitle: analysis.displayTitle || analysis.display_title || null,
       keywords: analysis.keywords || [],
       description: analysis.description || '',
-      confidence: analysis.confidence || 0,
-      displayTitle: analysis.displayTitle || analysis.display_title || null,
-      is_perfect_match: analysis.is_perfect_match,
-      new_category_proposal: analysis.new_category_proposal || null,
       reasoning: analysis.reasoning || null,
+      tags: analysis.keywords || [],
+      new_category_proposal: analysis.new_category_proposal || null,
+      ...(modelRejection ? { rejected: true, reason_code: modelRejection } : {})
+    }
+
+    const verdict = validateAiResult(candidate)
+    if (verdict.rejected) {
+      // 不回显原始文本、不生成中性名、不重试、不降级：只返回拒绝信号，
+      // 由任务层标记 complianceRejected 并终止（不进入重试循环）。
+      return {
+        complianceRejected: true,
+        complianceReasonCode: verdict.reasonCode,
+        secondary: '',
+        third: '',
+        filenameSuggestions: [],
+        keywords: [],
+        description: '',
+        confidence: 0,
+        displayTitle: null,
+        is_perfect_match: null,
+        new_category_proposal: null,
+        reasoning: null,
+        raw: null,
+        meta: {
+          provider: providerType,
+          model: modelKey,
+          series,
+          promptTemplate,
+          timestamp: Date.now()
+        }
+      }
+    }
+
+    const clean = verdict.sanitized || {}
+    return {
+      secondary: clean.secondary ?? analysis.secondary,
+      third: clean.third ?? analysis.third,
+      filenameSuggestions: clean.filenameSuggestions ?? analysis.filenameSuggestions ?? [],
+      keywords: clean.keywords ?? analysis.keywords ?? [],
+      description: clean.description ?? analysis.description ?? '',
+      confidence: analysis.confidence || 0,
+      displayTitle: clean.displayTitle ?? analysis.displayTitle ?? analysis.display_title ?? null,
+      is_perfect_match: analysis.is_perfect_match,
+      new_category_proposal: clean.new_category_proposal ?? analysis.new_category_proposal ?? null,
+      reasoning: clean.reasoning ?? analysis.reasoning ?? null,
       raw: analysis.raw,
       meta: {
         provider: providerType,

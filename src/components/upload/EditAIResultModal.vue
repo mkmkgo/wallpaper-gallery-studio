@@ -106,12 +106,12 @@
               <h4 class="modal__section-title">✨ 其他信息</h4>
 
               <div class="modal__form-group">
-                <label>诗意标题 <span class="modal__label-optional">(可选)</span></label>
+                <label>客观标题 <span class="modal__label-optional">(可选)</span></label>
                 <input
                   v-model="form.displayTitle"
                   type="text"
                   class="modal__input"
-                  placeholder="8-15字的诗意标题"
+                  placeholder="8-15字的客观标题"
                 />
               </div>
 
@@ -191,12 +191,14 @@
 
 <script setup>
 import { reactive, computed, watch, ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import CustomSelect from '@/components/common/CustomSelect.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import {
   getFallbackUploadCategoryTree,
   getUploadCategoryTree
 } from '@/services/upload/category-directory'
+import { validateAiResult } from '@/services/ai/compliance'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -453,9 +455,17 @@ function handleSave() {
     new_category_proposal: props.file?.aiMetadata?.new_category_proposal
   }
 
+  // 合规复检：人工编辑后的最终值必须再次过统一校验，
+  // 命中则拒绝提交（不设人工放行默认通道），并用中性化后的安全值覆盖。
+  const verdict = validateAiResult({ ...cleanedData, filename: cleanedData.filenames?.[0] || '' })
+  if (verdict.rejected) {
+    ElMessage.error('内容不符合合规要求，无法保存')
+    return
+  }
+
   emit('save', {
     fileId: props.file.id,
-    aiMetadata: cleanedData
+    aiMetadata: { ...cleanedData, ...(verdict.sanitized || {}) }
   })
 }
 </script>

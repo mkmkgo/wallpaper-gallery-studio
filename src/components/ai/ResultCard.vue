@@ -69,9 +69,9 @@
               </div>
             </div>
 
-            <!-- 诗意标题 -->
+            <!-- 客观标题 -->
             <div v-if="result.displayTitle" class="title-section">
-              <div class="section-label">诗意标题</div>
+              <div class="section-label">客观标题</div>
               <div class="display-title">{{ result.displayTitle }}</div>
             </div>
 
@@ -222,9 +222,9 @@
               </div>
             </div>
 
-            <!-- 诗意标题 -->
+            <!-- 客观标题 -->
             <div v-if="result.displayTitle" class="title-section">
-              <div class="section-label">诗意标题</div>
+              <div class="section-label">客观标题</div>
               <div class="display-title">{{ result.displayTitle }}</div>
             </div>
 
@@ -358,9 +358,9 @@
               </div>
             </div>
 
-            <!-- 诗意标题 -->
+            <!-- 客观标题 -->
             <div v-if="result.displayTitle" class="title-section centered">
-              <div class="section-label">诗意标题</div>
+              <div class="section-label">客观标题</div>
               <div class="display-title">{{ result.displayTitle }}</div>
             </div>
 
@@ -559,7 +559,7 @@ function copyFullInfo() {
 置信度: ${(props.result.confidence * 100).toFixed(0)}%`
 
   if (props.result.displayTitle) {
-    info += `\n诗意标题: ${props.result.displayTitle}`
+    info += `\n客观标题: ${props.result.displayTitle}`
   }
 
   if (props.result.is_perfect_match !== undefined) {

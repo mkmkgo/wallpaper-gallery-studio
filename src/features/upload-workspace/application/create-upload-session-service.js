@@ -1,3 +1,5 @@
+import { validateAiResult } from '@/services/ai/compliance'
+
 function normalizeUploadError(error) {
   if (error.type === 'PERMISSION_DENIED') {
     return '权限不足：您没有该仓库的写入权限'
@@ -39,6 +41,30 @@ export function createUploadSessionService({
       try {
         const path = `${targetPath}/${uploadFile.name}`
         const message = `Upload: ${uploadFile.name}`
+
+        // 服务层最终兜底：写图入仓之前，对最终值 + targetPath + 文件名再跑一次
+        // 完整校验。命中直接返回失败，绝不调用 repository.uploadImage。
+        const verdict = validateAiResult({
+          ...(uploadFile.aiMetadata || {}),
+          filename: uploadFile.name,
+          path,
+          category: uploadFile.targetL1 || '',
+          subcategory: uploadFile.targetL2 || ''
+        })
+        if (verdict.rejected || uploadFile.complianceRejected) {
+          uploadFile.complianceRejected = true
+          uploadFile.complianceReasonCode =
+            verdict.reasonCode || uploadFile.complianceReasonCode || null
+          uploadFile.status = 'error'
+          uploadFile.progress = 0
+          uploadFile.error = '内容不符合合规要求，已阻止上传'
+          return {
+            success: false,
+            errorType: 'COMPLIANCE_REJECTED',
+            error: uploadFile.error
+          }
+        }
+
         const hash = uploadFile.fileHash || (await computeFileHash(uploadFile.file))
         uploadFile.fileHash = hash
 
@@ -173,36 +199,58 @@ export function createUploadSessionService({
           metadataPendingDir = 'metadata-pending'
         } = repository.getContext({ series: group.series, repoId: group.repoId })
 
+        const images = []
+        for (const file of group.files) {
+          const fileTargetPath = file.targetPath || targetPath
+          const fileSeries = file.targetSeries || series
+          const pathParts = fileTargetPath.split('/')
+          const ai = file.aiMetadata || {
+            keywords: extractKeywordsFromFilename(file.name),
+            description: '',
+            displayTitle: '',
+            filename: '',
+            confidence: 0,
+            model: 'none',
+            analyzedAt: null
+          }
+
+          // 最终闸门：写 metadata-pending 之前，对每个文件的最终值复检。
+          // 命中则跳过该文件（不写入仓库），并记录错误。
+          const verdict = validateAiResult({
+            ...ai,
+            filename: file.name,
+            path: `${fileTargetPath}/${file.name}`,
+            category: pathParts[2] || '',
+            subcategory: pathParts[3] || ''
+          })
+          if (verdict.rejected || file.complianceRejected) {
+            file.complianceRejected = true
+            errors.push(`文件 ${file.name} 未通过合规校验`)
+            continue
+          }
+
+          images.push({
+            series: fileSeries,
+            relativePath: `${fileTargetPath}/${file.name}`,
+            category: pathParts[2] || '',
+            subcategory: pathParts[3] || '',
+            filename: file.name,
+            createdAt: new Date(now()).toISOString(),
+            size: file.size,
+            format: getExtension(file.name),
+            ai: { ...ai, ...(verdict.sanitized || {}) }
+          })
+        }
+
+        // 该组全部被拒时，不写空的 metadata-pending 文件
+        if (images.length === 0) continue
+
         const pendingData = {
           version: 1,
           createdAt: new Date(now()).toISOString(),
           source: 'studio',
           targetRepo: { owner, repo, branch },
-          images: group.files.map(file => {
-            const fileTargetPath = file.targetPath || targetPath
-            const fileSeries = file.targetSeries || series
-            const pathParts = fileTargetPath.split('/')
-
-            return {
-              series: fileSeries,
-              relativePath: `${fileTargetPath}/${file.name}`,
-              category: pathParts[2] || '',
-              subcategory: pathParts[3] || '',
-              filename: file.name,
-              createdAt: new Date(now()).toISOString(),
-              size: file.size,
-              format: getExtension(file.name),
-              ai: file.aiMetadata || {
-                keywords: extractKeywordsFromFilename(file.name),
-                description: '',
-                displayTitle: '',
-                filename: '',
-                confidence: 0,
-                model: 'none',
-                analyzedAt: null
-              }
-            }
-          })
+          images
         }
 
         const pendingFilename = `${now()}-${random().toString(36).substring(2, 8)}.json`

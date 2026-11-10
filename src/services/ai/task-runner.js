@@ -2,6 +2,7 @@ import { AI_TASK_STATUS, useAiTasksStore } from '@/stores/ai-tasks'
 import { useCredentialsStore } from '@/stores/credentials'
 import { useUploadSessionStore } from '@/stores/upload-session'
 import { analyzeImage as classifierAnalyze } from '@/services/ai/classifier'
+import { validateAiResult } from '@/services/ai/compliance'
 
 let runningPromise = null
 
@@ -120,15 +121,45 @@ async function runQueue() {
         })
 
         const metadata = buildAiMetadata(task.series, result)
-        applyResultToUploadFile(uploadFile, task, metadata)
-        await taskStore.updateTask(task.id, {
-          status: AI_TASK_STATUS.COMPLETED,
-          result: metadata,
-          error: null,
-          retryAt: null,
-          finishedAt: Date.now()
+        // 合规复检（buildAiMetadata 之后 / applyResultToUploadFile 之前）：
+        // 命中则只标记 complianceRejected，不生成 aiMetadata、不设 targetPath，
+        // 并终止重试循环（合规拒绝不重试、不降级）。
+        const verdict = validateAiResult({
+          ...metadata,
+          ...(result.complianceRejected
+            ? { complianceRejected: true, complianceReasonCode: result.complianceReasonCode }
+            : {})
         })
-        completed = true
+
+        if (verdict.rejected) {
+          uploadFile.complianceRejected = true
+          uploadFile.complianceReasonCode = verdict.reasonCode
+          uploadFile.aiMetadata = null
+          uploadFile.targetPath = ''
+          uploadFile.targetL1 = ''
+          uploadFile.targetL2 = ''
+          uploadFile.aiTaskId = task.id
+          uploadFile.aiTaskStatus = AI_TASK_STATUS.FAILED
+          uploadFile.aiTaskAttempts = task.attempts || 0
+          await taskStore.updateTask(task.id, {
+            status: AI_TASK_STATUS.FAILED,
+            result: null,
+            error: '内容不符合合规要求，已阻止上传',
+            retryAt: null,
+            finishedAt: Date.now()
+          })
+          completed = true
+        } else {
+          applyResultToUploadFile(uploadFile, task, { ...metadata, ...(verdict.sanitized || {}) })
+          await taskStore.updateTask(task.id, {
+            status: AI_TASK_STATUS.COMPLETED,
+            result: metadata,
+            error: null,
+            retryAt: null,
+            finishedAt: Date.now()
+          })
+          completed = true
+        }
       } catch (error) {
         lastError = error
         const isLastAttempt = attemptNumber >= maxAttempts
