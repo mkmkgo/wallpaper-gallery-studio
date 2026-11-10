@@ -132,4 +132,44 @@ describe('上传服务层合规闸门（绝不入仓）', () => {
     expect(metadataResult.success).toBe(true)
     expect(mocks.createFile).toHaveBeenCalledTimes(1)
   })
+
+  it('上传目标路径含 /政治/ 分类名 → 服务层闸门拦截，绝不调用 uploadImage', async () => {
+    const { service, mocks } = createService()
+    const file = {
+      name: 'a.jpg',
+      status: 'pending',
+      file: {},
+      aiMetadata: { displayTitle: '柔光室内特写', keywords: ['自然光'] }
+    }
+
+    const result = await service.uploadFile(file, {
+      targetPath: 'wallpaper/mobile/政治/通用',
+      series: 'mobile',
+      computeFileHash: async () => 'hash-path'
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.errorType).toBe('COMPLIANCE_REJECTED')
+    expect(mocks.uploadImage).not.toHaveBeenCalled()
+    expect(file.complianceRejected).toBe(true)
+  })
+
+  it('上传目标路径为 URL 编码分类名 → 同样拦截', async () => {
+    const { service, mocks } = createService()
+    const file = {
+      name: 'a.jpg',
+      status: 'pending',
+      file: {},
+      aiMetadata: { displayTitle: '柔光室内特写' }
+    }
+
+    const result = await service.uploadFile(file, {
+      targetPath: `wallpaper/mobile/${encodeURIComponent('政治')}/通用`,
+      series: 'mobile',
+      computeFileHash: async () => 'hash-encoded'
+    })
+
+    expect(result.success).toBe(false)
+    expect(mocks.uploadImage).not.toHaveBeenCalled()
+  })
 })

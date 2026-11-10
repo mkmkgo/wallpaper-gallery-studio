@@ -70,6 +70,7 @@ function neutralizeText(text) {
 const NORMALIZED = {
   blockedPhrases: POLICY.blockedPhrases.map(normalize),
   blockedCategories: POLICY.blockedCategories.map(normalize),
+  blockedCategoryPhrases: POLICY.blockedCategoryPhrases.map(normalize),
   absoluteDeny: POLICY.absoluteDeny.map(normalize),
   allowlist: POLICY.allowlist.map(normalize),
   combinationalRules: POLICY.combinationalRules.map(rule => ({
@@ -105,8 +106,17 @@ function detectNormalized(text) {
     if (hasSubject && hasContext) return REASON_CODES.ABSOLUTE_DENY
   }
 
-  // 2) 敏感完整词组：先剥离 allowlist，单独视觉元素不构成命中
+  // 2) 先剥离 allowlist，单独视觉元素不构成命中
   const stripped = stripAllowlist(text)
+
+  // 2a) 分类名完整词组（由 blockedCategories 派生）：覆盖 path 分段、
+  // 文件名、数组 / 对象递归值中的分类名，经 expandVariants 归一化后仍按
+  // 完整词组匹配，禁止单字包含。命中返回 BLOCKED_CATEGORY。
+  for (const phrase of NORMALIZED.blockedCategoryPhrases) {
+    if (phrase && stripped.includes(phrase)) return REASON_CODES.BLOCKED_CATEGORY
+  }
+
+  // 2b) 敏感完整词组
   for (const phrase of NORMALIZED.blockedPhrases) {
     if (phrase && stripped.includes(phrase)) return REASON_CODES.SENSITIVE_CONTENT
   }

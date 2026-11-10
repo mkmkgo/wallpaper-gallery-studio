@@ -292,3 +292,75 @@ describe('挂点覆盖：人工编辑与 provider 兜底', () => {
     expect(verdict.sanitized.filenameSuggestions).toContain('深色袜装街拍壁纸.jpg')
   })
 })
+
+describe('分类名黑名单覆盖全部文本字段（路径 / 文件名漏检回归）', () => {
+  it('blockedCategoryPhrases 由 blockedCategories 派生且未扩词', () => {
+    expect(COMPLIANCE_POLICY.blockedCategories).toEqual(['政治'])
+    expect(COMPLIANCE_POLICY.blockedCategoryPhrases).toEqual(COMPLIANCE_POLICY.blockedCategories)
+  })
+
+  const encodedCategory = encodeURIComponent('政治')
+  const encodedPath = `/wallpaper/mobile/${encodedCategory}/%E9%80%9A%E7%94%A8/a.jpg`
+  const doubleEncodedPath = encodeURIComponent('/wallpaper/mobile/政治/通用/a.jpg')
+
+  const fieldCases = [
+    ['category', '政治', 'category 精确相等'],
+    ['path', '/wallpaper/mobile/政治/通用/a.jpg', 'path 明文分段'],
+    ['path', encodedPath, 'path URL 编码'],
+    ['path', encodedPath.toLowerCase(), 'path URL 编码大小写变体'],
+    ['path', doubleEncodedPath, 'path 双重编码'],
+    ['filename', '政治主题.jpg', 'filename 明文'],
+    ['filename', `${encodedCategory}.jpg`, 'filename URL 编码'],
+    ['displayTitle', '政治题材构图', 'displayTitle'],
+    ['keywords', ['风景', '政治'], 'keywords 数组'],
+    ['tags', ['政治'], 'tags 数组'],
+    ['description', '画面属于政治题材', 'description'],
+    ['reasoning', '依据规则判定为政治', 'reasoning'],
+    ['ai', { nested: { note: '政治分类' } }, 'ai 对象递归'],
+    ['thumbnailPath', 'preview/政治/preview.jpg', 'thumbnailPath'],
+    ['url', 'https://example.com/政治/a.jpg', 'url'],
+    ['title', '政治主题', 'title']
+  ]
+
+  for (const [field, value, label] of fieldCases) {
+    it(`${label} → rejected、reasonCode=BLOCKED_CATEGORY、sanitized=null`, () => {
+      const verdict = validateAiResult(baseResult({ [field]: value }))
+      expect(verdict.rejected).toBe(true)
+      expect(verdict.accepted).toBe(false)
+      expect(verdict.reasonCode).toBe(REASON_CODES.BLOCKED_CATEGORY)
+      expect(verdict.sanitized).toBeNull()
+    })
+  }
+
+  it('Unicode 归一化（全角 / 大小写）后分类名仍命中', () => {
+    expect(validateAiResult(baseResult({ displayTitle: 'ＰＯＬＩＴＩＣＳ 政治' })).rejected).toBe(
+      true
+    )
+    expect(
+      validateAiResult(baseResult({ path: '/wallpaper/ＭＯＢＩＬＥ/政治/a.jpg' })).reasonCode
+    ).toBe(REASON_CODES.BLOCKED_CATEGORY)
+  })
+
+  it('不按单字包含匹配，避免误伤含「政」「治」的普通词', () => {
+    expect(validateAiResult(baseResult({ displayTitle: '行政与治理主题' })).rejected).toBe(false)
+  })
+
+  it('回归：原有全部误伤用例在新检测下仍全部放行', () => {
+    const safeCases = [
+      { displayTitle: '红色背景静物构图' },
+      { displayTitle: '五角星构图夜景' },
+      { displayTitle: '星空星形装饰' },
+      { description: '历史建筑与纪念馆外景' },
+      { keywords: ['旗袍', '暖色调'] },
+      { description: '影视剧照制服风穿搭' },
+      { filename: '复古海报古建筑.jpg' },
+      { keywords: ['旗帜', '旌旗'] },
+      { displayTitle: '红色系暖色调街拍' }
+    ]
+    for (const overrides of safeCases) {
+      const verdict = validateAiResult(baseResult(overrides))
+      expect(verdict.rejected).toBe(false)
+      expect(verdict.accepted).toBe(true)
+    }
+  })
+})

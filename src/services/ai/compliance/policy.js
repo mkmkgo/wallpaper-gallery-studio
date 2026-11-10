@@ -85,12 +85,23 @@ export const TRADITIONAL_TO_SIMPLIFIED = Object.freeze({
   徵: '征'
 })
 
+/** 分类黑名单（沿用现有「政治」，不扩词，避免误伤）。 */
+const BLOCKED_CATEGORIES = ['政治']
+
 export const COMPLIANCE_POLICY = Object.freeze({
   version: '1.0.0',
   strictMode: true,
 
   /** 分类名精确相等（沿用现有「政治」黑名单，不扩词）。 */
-  blockedCategories: ['政治'],
+  blockedCategories: BLOCKED_CATEGORIES,
+
+  /**
+   * 由 blockedCategories 派生的分类名「完整词组」集合。
+   * 除字段精确相等外，这些词还作为完整词组参与全部文本字段
+   * （含 path / filename / 数组 / 对象递归值）的检测，覆盖路径分段、
+   * 文件名、URL 编码等形态；禁止拆成单字匹配，也不在此扩新词。
+   */
+  blockedCategoryPhrases: Object.freeze([...BLOCKED_CATEGORIES]),
 
   /**
    * 敏感完整词组：政治人物 / 政党 / 国家象征性标识 / 党政标识等类别。
