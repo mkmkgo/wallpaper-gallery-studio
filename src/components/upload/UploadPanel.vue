@@ -60,7 +60,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import UploadHeader from './UploadPanel/UploadHeader.vue'
 import UploadDropzone from './UploadPanel/UploadDropzone.vue'
@@ -70,6 +70,7 @@ import {
   canStartUpload as resolveCanStartUpload,
   isSkippedFile
 } from '@/features/upload-workspace/domain/upload-readiness'
+import { isFailedUploadFile } from '@/features/upload-workspace/domain/failed-file-selection'
 
 const authStore = useAuthStore()
 
@@ -169,8 +170,20 @@ async function handleBatchDelete(ids) {
       cancelButtonText: '取消',
       type: 'warning'
     })
+    // 在 emit 之前基于当前快照计算提示文案：父组件的 @remove-batch 会同步
+    // 修改 store，删除后 props.files 可能已经变成新数组，不能在这里重新取长度。
+    const failedDeleted = ids.filter(id =>
+      props.files.some(file => file.id === id && isFailedUploadFile(file))
+    ).length
+    const remaining = Math.max(0, props.files.length - ids.length)
+
     emit('remove-batch', ids)
     fileGridRef.value?.clearSelection()
+
+    const failedHint = failedDeleted > 0 ? `（含 ${failedDeleted} 个 AI 分析失败项）` : ''
+    ElMessage.success(
+      `已删除 ${ids.length} 个文件${failedHint}，剩余 ${remaining} 个文件，可继续上传`
+    )
   } catch {
     // 取消
   }

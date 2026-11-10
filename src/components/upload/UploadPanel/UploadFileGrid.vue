@@ -12,12 +12,35 @@
           全选（用于批量删除）
         </el-checkbox>
 
+        <!-- 一键勾选所有 AI 分析失败项，复用「全选 / 删除选中」的同一套 selectedIds -->
+        <button
+          type="button"
+          class="upload-file-grid__select-failed"
+          :disabled="failedCount === 0"
+          :title="selectFailedTitle"
+          @click="handleSelectFailed"
+        >
+          <el-icon><WarningFilled /></el-icon>
+          勾选失败项 ({{ failedCount }})
+        </button>
+
         <!-- 文件数量提示 -->
         <span class="upload-file-grid__count">
           共 {{ files.length }} 个文件
           <template v-if="pendingFiles.length !== files.length">
             （{{ pendingFiles.length }} 待上传）
           </template>
+        </span>
+
+        <span v-if="failedCount > 0" class="upload-file-grid__failed-count">
+          失败 {{ failedCount }} 项
+        </span>
+        <span v-else class="upload-file-grid__failed-count upload-file-grid__failed-count--empty">
+          暂无失败项
+        </span>
+
+        <span v-if="selectedIds.length > 0" class="upload-file-grid__selected-count">
+          已选中 {{ selectedIds.length }} 项，点击「删除选中」即可移除
         </span>
       </div>
 
@@ -78,7 +101,9 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, WarningFilled } from '@element-plus/icons-vue'
+import { useAiTasksStore } from '@/stores/ai-tasks'
+import { collectFailedFileIds } from '@/features/upload-workspace/domain/failed-file-selection'
 import UploadFileItem from './UploadFileItem.vue'
 
 const props = defineProps({
@@ -90,7 +115,20 @@ const props = defineProps({
 
 defineEmits(['select', 'remove', 'change-target', 'batch-delete', 'apply-all-ai', 'edit-ai'])
 
+const aiTasksStore = useAiTasksStore()
+
 const selectedIds = ref([])
+
+// 失败项必须基于「完整文件数组 + 完整 AI 任务数组」计算：任务中心的 visibleTasks
+// 只是虚拟滚动窗口切片，滚出视口的失败项不能被漏选。aiTasksStore.tasks 是全量
+// 任务数组；文件上的 aiTaskStatus / aiMetadata.error 作为兜底标记。
+const failedFileIds = computed(() => collectFailedFileIds(props.files, aiTasksStore.tasks))
+const failedCount = computed(() => failedFileIds.value.length)
+const selectFailedTitle = computed(() =>
+  failedCount.value > 0
+    ? `勾选全部 ${failedCount.value} 个 AI 分析失败项，随后点击「删除选中」即可批量移除`
+    : '当前没有 AI 分析失败的任务'
+)
 
 // 待处理文件
 const pendingFiles = computed(() =>
@@ -129,6 +167,13 @@ function handleSelectAll(val) {
   } else {
     selectedIds.value = []
   }
+}
+
+// 只勾选 AI 分析失败项：复用「全选 / 删除选中」的同一套 selectedIds。
+// 先清空再写入，保证点击后的选中集合里不含任何成功项。
+function handleSelectFailed() {
+  if (failedCount.value === 0) return
+  selectedIds.value = [...failedFileIds.value]
 }
 
 // 切换单个文件的选中状态
@@ -233,6 +278,57 @@ defineExpose({
     padding: $spacing-1 $spacing-2;
     background: rgba(255, 255, 255, 0.05);
     border-radius: $radius-sm;
+  }
+
+  &__select-failed {
+    display: flex;
+    align-items: center;
+    gap: $spacing-1;
+    padding: $spacing-1 $spacing-3;
+    background: rgba($warning, 0.1);
+    border: 1px solid rgba($warning, 0.3);
+    border-radius: $radius-md;
+    color: $warning;
+    font-size: $font-size-xs;
+    cursor: pointer;
+    transition: all $duration-normal;
+
+    &:hover:not(:disabled) {
+      background: rgba($warning, 0.2);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      border-color: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: $gray-500;
+      cursor: not-allowed;
+    }
+
+    .el-icon {
+      font-size: 12px;
+    }
+  }
+
+  &__failed-count,
+  &__selected-count {
+    padding: $spacing-1 $spacing-2;
+    border-radius: $radius-sm;
+    background: rgba(255, 255, 255, 0.05);
+    color: $gray-400;
+    font-size: $font-size-xs;
+  }
+
+  &__failed-count {
+    color: $danger;
+
+    &--empty {
+      color: $gray-500;
+    }
+  }
+
+  &__selected-count {
+    color: $primary-start;
   }
 
   &__grid {
