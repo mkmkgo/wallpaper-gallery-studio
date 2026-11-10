@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 
 // 测试环境没有 IndexedDB，桩掉持久化层，让「删除后任务同步」用例保持确定性且不产生噪声
 vi.mock('@/services/ai/task-storage', () => ({
@@ -87,6 +88,35 @@ describe('UploadFileGrid「勾选失败项」', () => {
     expect(emitted).toHaveLength(1)
     expect(emitted[0][0]).toEqual(['fail-1', 'fail-2'])
     expect(emitted[0][0]).not.toContain('ok-0')
+  })
+
+  it('覆盖式语义：已有 607 项全选残留时，只保留 2 个失败 id，绝不误删成功项', async () => {
+    const files = buildFiles()
+    const wrapper = mountGrid(files)
+
+    // 模拟用户此前点过「全选（用于批量删除）」：607 项全部处于选中态
+    wrapper.vm.selectedIds = files.map(file => file.id)
+    await nextTick()
+
+    expect(wrapper.find('.upload-file-grid__selected-count').text()).toContain('已选中 607 项')
+    expect(deleteButton(wrapper).text()).toContain('删除选中 (607)')
+
+    await selectFailedButton(wrapper).trigger('click')
+
+    // 覆盖式：清空历史勾选，只留失败项；按钮视觉上从 607 收敛到 2
+    expect(wrapper.find('.upload-file-grid__selected-count').text()).toContain('已选中 2 项')
+    expect(deleteButton(wrapper).text()).toContain('删除选中 (2)')
+
+    await deleteButton(wrapper).trigger('click')
+
+    const emitted = wrapper.emitted('batch-delete')
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0][0]).toHaveLength(2)
+    expect(emitted[0][0]).toEqual(['fail-1', 'fail-2'])
+    expect(emitted[0][0].some(id => id.startsWith('ok-'))).toBe(false)
+    expect(
+      emitted[0][0].every(id => files.find(file => file.id === id)?.aiTaskStatus === 'failed')
+    ).toBe(true)
   })
 
   it('无失败项时按钮禁用，且点击不会误选任何文件', async () => {

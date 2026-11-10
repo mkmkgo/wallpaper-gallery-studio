@@ -171,6 +171,7 @@ function handleSelectAll(val) {
 
 // 只勾选 AI 分析失败项：复用「全选 / 删除选中」的同一套 selectedIds。
 // 先清空再写入，保证点击后的选中集合里不含任何成功项。
+// 覆盖式是刻意选择：避免「全选」或历史勾选残留被一并带进 remove-batch 而误删成功项。
 function handleSelectFailed() {
   if (failedCount.value === 0) return
   selectedIds.value = [...failedFileIds.value]
