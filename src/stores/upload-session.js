@@ -2,6 +2,10 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { AI_TASK_STATUS, useAiTasksStore } from './ai-tasks'
 import { previewManager } from '@/utils/previewManager'
+import {
+  isUploadableFile,
+  isSkippedFile
+} from '@/features/upload-workspace/domain/upload-readiness'
 
 function buildTargetPath(task) {
   const metadata = task.result
@@ -73,6 +77,9 @@ export const useUploadSessionStore = defineStore('upload-session', () => {
   const uploadingFiles = computed(() => files.value.filter(file => file.status === 'uploading'))
   const successFiles = computed(() => files.value.filter(file => file.status === 'success'))
   const errorFiles = computed(() => files.value.filter(file => file.status === 'error'))
+  // 可上传：已确定目标目录；未就绪（AI 分析失败/未完成）的作为跳过项
+  const uploadableFiles = computed(() => files.value.filter(isUploadableFile))
+  const skippedFiles = computed(() => files.value.filter(isSkippedFile))
 
   function setFiles(nextFiles) {
     files.value = nextFiles
@@ -162,6 +169,8 @@ export const useUploadSessionStore = defineStore('upload-session', () => {
     uploadingFiles,
     successFiles,
     errorFiles,
+    uploadableFiles,
+    skippedFiles,
     setFiles,
     appendFiles,
     removeFile,

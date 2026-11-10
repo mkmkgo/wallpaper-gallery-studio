@@ -13,6 +13,7 @@
       :progress="progress"
       :can-upload="authStore.canUpload"
       :can-start-upload="canStartUpload"
+      :skipped-count="skippedFiles.length"
       :metadata-status="metadataStatus"
       :metadata-error="metadataError"
       @mode-change="handleModeChange"
@@ -65,6 +66,10 @@ import UploadHeader from './UploadPanel/UploadHeader.vue'
 import UploadDropzone from './UploadPanel/UploadDropzone.vue'
 import UploadFileGrid from './UploadPanel/UploadFileGrid.vue'
 import AITaskCenter from './AITaskCenter.vue'
+import {
+  canStartUpload as resolveCanStartUpload,
+  isSkippedFile
+} from '@/features/upload-workspace/domain/upload-readiness'
 
 const authStore = useAuthStore()
 
@@ -128,11 +133,11 @@ const dropzoneText = computed(() => {
   return props.targetPath ? '拖拽图片或文件夹到此处' : '请先选择分类'
 })
 
-const canStartUpload = computed(() => {
-  if (props.uploading) return false
-  if (props.pendingCount === 0) return false
-  return !props.files.some(f => f.status === 'pending' && !f.targetPath)
-})
+// 只要存在已就绪（有目标目录）的文件即可上传；AI 分析失败 / 未完成的跳过项
+// 不再锁死整批。与 store、上传入口共用同一判定。
+const canStartUpload = computed(() => resolveCanStartUpload(props.files, props.uploading))
+
+const skippedFiles = computed(() => props.files.filter(isSkippedFile))
 
 function preventDefaultDrag(e) {
   e.preventDefault()

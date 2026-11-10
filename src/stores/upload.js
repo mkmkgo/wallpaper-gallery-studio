@@ -14,6 +14,7 @@ import { AI_PROVIDERS } from '@/services/ai/core'
 import { previewManager } from '@/utils/previewManager'
 import { hashWorker } from '@/utils/hashWorker'
 import { imageCompressor } from '@/utils/imageCompressor'
+import { canStartUpload as resolveCanStartUpload } from '@/features/upload-workspace/domain/upload-readiness'
 import {
   analyzeImage as classifierAnalyze,
   CLASSIFIER_CONFIG,
@@ -81,7 +82,9 @@ export const useUploadStore = defineStore('upload', () => {
     pendingFiles,
     uploadingFiles,
     successFiles,
-    errorFiles
+    errorFiles,
+    uploadableFiles,
+    skippedFiles
   } = storeToRefs(sessionStore)
 
   // 计算属性
@@ -362,20 +365,15 @@ export const useUploadStore = defineStore('upload', () => {
     })
   }
 
-  // 上传所有待上传文件
+  // 上传所有「已就绪」文件；AI 分析失败 / 未完成的文件（无 targetPath）自动跳过，
+  // 不再阻塞整批，也不会被上传到兜底目录。
   async function uploadAll() {
-    if (uploading.value || pendingFiles.value.length === 0) return
-
-    // 检查是否所有待上传文件都有目标路径
-    const filesWithoutTarget = pendingFiles.value.filter(f => !f.targetPath)
-    if (filesWithoutTarget.length > 0) {
-      throw new Error(`有 ${filesWithoutTarget.length} 个文件未设置上传目录`)
-    }
+    if (uploading.value || uploadableFiles.value.length === 0) return
 
     uploading.value = true
     metadataStatus.value = 'idle'
     metadataError.value = null
-    const pending = files.value.filter(file => file.status === 'pending')
+    const pending = uploadableFiles.value
     const { results, uploadedFiles, permissionError } =
       await uploadSessionService.uploadPendingFiles(pending, {
         uploadDelayMs: UPLOAD_DELAY,
@@ -521,11 +519,9 @@ export const useUploadStore = defineStore('upload', () => {
     return uploadFileLifecycleService.applyAllAiRecommendations(files.value)
   }
 
-  // 检查是否所有待上传文件都已设置目标路径（AI模式下需要等AI分析完成）
+  // 只要存在至少一个「已就绪」文件即可开始上传（少数失败项不锁死整批）
   function canStartUpload() {
-    const pending = pendingFiles.value
-    if (pending.length === 0) return false
-    return pending.every(f => f.targetPath)
+    return resolveCanStartUpload(files.value, uploading.value)
   }
 
   function setAiModel(modelKey) {
@@ -600,6 +596,8 @@ export const useUploadStore = defineStore('upload', () => {
     uploadingFiles,
     successFiles,
     errorFiles,
+    uploadableFiles,
+    skippedFiles,
     // 方法
     validateFile,
     addFiles,

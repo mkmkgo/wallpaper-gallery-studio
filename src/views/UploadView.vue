@@ -838,11 +838,19 @@ async function handleUpload() {
     return
   }
 
-  // 检查是否有文件没有目标路径
-  const filesWithoutTarget = uploadStore.pendingFiles.filter(f => !f.targetPath)
-  if (filesWithoutTarget.length > 0) {
-    ElMessage.warning(`有 ${filesWithoutTarget.length} 个文件未设置上传目录`)
+  // 仅上传「已就绪」的图片：AI 分析失败 / 尚未完成分类的文件（无目标目录）
+  // 作为跳过项，不再锁死整批，也不会被传到兜底目录。
+  const uploadableCount = uploadStore.uploadableFiles.length
+  if (uploadableCount === 0) {
+    ElMessage.warning('暂无可上传的图片，请等待 AI 分析完成或重试失败任务')
     return
+  }
+
+  const skippedCount = uploadStore.skippedFiles.length
+  if (skippedCount > 0) {
+    ElMessage.info(
+      `已跳过 ${skippedCount} 张未就绪图片（分析失败或未完成分类），开始上传 ${uploadableCount} 张；跳过的图片可重试或删除后再上传`
+    )
   }
 
   // 打开进度弹框
@@ -850,6 +858,10 @@ async function handleUpload() {
 
   try {
     const results = await uploadStore.uploadAll()
+    if (!results) {
+      showProgressModal.value = false
+      return
+    }
     handleUploadResults(results, '上传')
   } catch (e) {
     ElMessage.error(e.message || '上传失败')

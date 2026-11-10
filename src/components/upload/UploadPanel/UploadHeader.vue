@@ -46,6 +46,13 @@
         >
           重试元数据
         </button>
+        <span
+          v-if="skippedCount > 0"
+          class="upload-header__skipped"
+          title="AI 分析失败或尚未完成分类的图片不会阻塞上传，将被自动跳过；可在任务中心重试或删除后再上传"
+        >
+          {{ skippedCount }} 张未就绪将跳过
+        </span>
         <button
           v-if="canUpload"
           class="upload-header__btn-upload"
@@ -250,6 +257,7 @@ const props = defineProps({
   progress: { type: Number, default: 0 },
   canUpload: { type: Boolean, default: true },
   canStartUpload: { type: Boolean, default: false },
+  skippedCount: { type: Number, default: 0 },
   metadataStatus: { type: String, default: 'idle' },
   metadataError: { type: String, default: '' }
 })
@@ -1030,6 +1038,15 @@ watch(
       background: rgba($danger, 0.1);
       color: $danger;
     }
+  }
+
+  &__skipped {
+    padding: $spacing-1 $spacing-2;
+    border-radius: $radius-sm;
+    background: rgba($warning, 0.12);
+    color: $warning;
+    font-size: $font-size-xs;
+    white-space: nowrap;
   }
 
   &__btn-metadata {
