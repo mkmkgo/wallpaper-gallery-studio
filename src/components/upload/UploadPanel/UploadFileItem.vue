@@ -170,29 +170,16 @@ const showCheckbox = computed(
   () => (props.file.status === 'pending' || props.file.status === 'error') && !props.uploading
 )
 
-const aiTask = computed(() => aiTasksStore.getTaskByFileId(props.file.id))
-
-const queuePosition = computed(() => {
-  const task = aiTask.value
-  if (!task || task.status !== AI_TASK_STATUS.QUEUED) return 0
-
-  const queued = aiTasksStore.tasks
-    .filter(candidate => candidate.status === AI_TASK_STATUS.QUEUED)
-    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-
-  const index = queued.findIndex(candidate => candidate.id === task.id)
-  return index >= 0 ? index + 1 : 0
-})
-
 const aiTaskBadge = computed(() => {
   if (props.uploadMode !== 'ai') return null
 
-  const task = aiTask.value
+  // 只查一次：走 store 的 O(1) Map 索引，不再对每个卡片做 filter/sort/findIndex
+  const task = aiTasksStore.getTaskByFileId(props.file.id)
   if (!task) return null
 
   if (task.status === AI_TASK_STATUS.QUEUED) {
     return {
-      text: queuePosition.value > 0 ? `排队第 ${queuePosition.value} 位` : '排队中',
+      text: '排队中',
       title: '等待前面的 AI 分析任务完成',
       tone: 'queued',
       loading: false

@@ -70,24 +70,24 @@
       </div>
     </div>
 
-    <!-- 图片网格 -->
+    <!-- 图片网格：607 项不再走 TransitionGroup（会对每项做 FLIP 追踪与过渡钩子）。
+         Vue3 的 TransitionGroup 未指定 tag 时本就不产生包裹 DOM，直接由外层普通 div
+         承载卡片，display:grid 的网格布局与样式完全不变。 -->
     <div class="upload-file-grid__grid">
-      <TransitionGroup name="grid">
-        <UploadFileItem
-          v-for="file in files"
-          :key="file.id"
-          :file="file"
-          :is-selected="selectedId === file.id"
-          :is-checked="selectedIds.includes(file.id)"
-          :uploading="uploading"
-          :upload-mode="uploadMode"
-          @select="$emit('select', file)"
-          @remove="$emit('remove', $event)"
-          @change-target="$emit('change-target', file)"
-          @toggle-check="toggleCheck"
-          @edit-ai="$emit('edit-ai', file)"
-        />
-      </TransitionGroup>
+      <UploadFileItem
+        v-for="file in files"
+        :key="file.id"
+        :file="file"
+        :is-selected="selectedId === file.id"
+        :is-checked="selectedIds.includes(file.id)"
+        :uploading="uploading"
+        :upload-mode="uploadMode"
+        @select="$emit('select', file)"
+        @remove="$emit('remove', $event)"
+        @change-target="$emit('change-target', file)"
+        @toggle-check="toggleCheck"
+        @edit-ai="$emit('edit-ai', file)"
+      />
     </div>
   </div>
 
@@ -150,14 +150,15 @@ const isIndeterminate = computed(
   () => selectedIds.value.length > 0 && selectedIds.value.length < pendingFiles.value.length
 )
 
-// 文件列表变化时清理已删除的选中项
+// 文件列表变化时清理已删除的选中项。
+// 只对 id 快照做浅层监听：607 个含 File/blob 的对象做 deep 遍历会拖垮主线程；
+// 清理逻辑只关心「哪些 id 还在」，文件属性变化不影响结果。
 watch(
-  () => props.files,
-  files => {
-    const ids = files.map(f => f.id)
+  () => props.files.map(f => f.id).join(','),
+  () => {
+    const ids = props.files.map(f => f.id)
     selectedIds.value = selectedIds.value.filter(id => ids.includes(id))
-  },
-  { deep: true }
+  }
 )
 
 // 全选/取消全选

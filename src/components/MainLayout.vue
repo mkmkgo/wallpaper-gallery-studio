@@ -268,7 +268,7 @@ async function handleCommand(command) {
     flex: 1;
     padding: 0 $spacing-4 $spacing-4;
     min-height: 0;
-    overflow: visible;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
   }

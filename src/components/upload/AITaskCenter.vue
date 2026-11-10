@@ -323,7 +323,7 @@ onUnmounted(() => {
   &__scroller {
     position: relative;
     min-height: 160px;
-    max-height: min(46vh, 420px);
+    max-height: min(30vh, 280px);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: stable;

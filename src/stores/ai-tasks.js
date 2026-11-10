@@ -42,6 +42,12 @@ export const useAiTasksStore = defineStore('ai-tasks', () => {
   )
   const pendingCount = computed(() => queuedTasks.value.length + activeTasks.value.length)
 
+  // O(1) 索引：607 张壁纸时每个上传卡片都会调用 getTaskByFileId，用随 tasks
+  // 惰性重建的 Map 取代逐卡片 O(N) find，避免 O(N²) 卡死。
+  // getTaskByFileId 的查询键是 fileId，故按 fileId 建索引；taskByIdMap 供按任务 id 查询复用。
+  const taskByFileIdMap = computed(() => new Map(tasks.value.map(task => [task.fileId, task])))
+  const taskByIdMap = computed(() => new Map(tasks.value.map(task => [task.id, task])))
+
   function sortTasks() {
     tasks.value.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
   }
@@ -184,13 +190,15 @@ export const useAiTasksStore = defineStore('ai-tasks', () => {
   }
 
   function getTaskByFileId(fileId) {
-    return tasks.value.find(task => task.fileId === fileId) || null
+    return taskByFileIdMap.value.get(fileId) || null
   }
 
   return {
     tasks,
     initialized,
     persistenceWarning,
+    taskByFileIdMap,
+    taskByIdMap,
     queuedTasks,
     activeTasks,
     completedTasks,

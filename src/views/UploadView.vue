@@ -1631,6 +1631,50 @@ watch(
   }
 }
 
+// P0 止血：宽屏桌面下放开上传页的滚动锁，让 600+ 文件时页面可下滑。
+// 只作用于 .upload-view 及其后代（上传页专属作用域），其他视图不受影响；
+// 窄屏（<=1180px）仍由下方 @media (max-width:1180px) 的既有规则接管。
+@media (min-width: 1181px) {
+  .upload-view {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+
+    &__content {
+      overflow: visible;
+
+      > * {
+        height: auto;
+        min-height: 0;
+        overflow: visible;
+      }
+    }
+
+    &__center,
+    &__preview,
+    &__workflow,
+    &__sidebar {
+      min-height: 0;
+      overflow: visible;
+    }
+
+    &__preview,
+    &__workflow {
+      height: auto;
+    }
+
+    // 页面滚动时右侧栏与分类树常驻。滚动主体是 MainLayout 的 .layout__main
+    // （overflow-y:auto），顶部导航在其外部作为兄弟节点，不随内容滚动，
+    // 故 top 只需留出 16px 间距，无需叠加 header 高度。
+    &__categories,
+    &__sidebar {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+    }
+  }
+}
+
 // 响应式
 @media (max-width: 1500px) {
   .upload-view__content {
