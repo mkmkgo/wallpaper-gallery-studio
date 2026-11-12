@@ -83,6 +83,19 @@
             </span>
           </div>
 
+          <div v-if="workflowStore.frontendStatus.latestRun" class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">前端部署</span>
+            <span class="workflow-panel__stat-value">
+              <el-tag :type="getRunStatusType(workflowStore.frontendStatus.latestRun)" size="small">
+                {{
+                  workflowStore.frontendStatus.hasRunning
+                    ? '部署中'
+                    : getRunStatusText(workflowStore.frontendStatus.latestRun)
+                }}
+              </el-tag>
+            </span>
+          </div>
+
           <div
             v-if="workflowStatus.latestRun?.conclusion === 'failure' && !isRunning"
             class="workflow-panel__failure"
@@ -134,6 +147,14 @@
           <div v-if="pendingInfo.message" class="workflow-panel__message">
             <el-icon><InfoFilled /></el-icon>
             {{ pendingInfo.message }}
+          </div>
+
+          <div v-if="showDeployHint" class="workflow-panel__deploy-hint">
+            <el-icon><InfoFilled /></el-icon>
+            <span
+              >图床处理已完成，前端已由 CI
+              自动重建。若线上数据尚未更新，可点击下方「重新部署前端」手动补触发。</span
+            >
           </div>
 
           <div v-if="pendingInfo.error" class="workflow-panel__error">
@@ -283,6 +304,15 @@ const workflowStatus = computed(() => workflowStore.workflowStatus)
 const isAdmin = computed(() => authStore.permissionLevel === 'admin')
 const canUpload = computed(() => authStore.canUpload)
 const isRunning = computed(() => workflowStore.isRunning)
+
+// 工作流跑完（成功）、无待处理、无运行中 → 提示可手动补触发前端部署
+const showDeployHint = computed(
+  () =>
+    canUpload.value &&
+    !isRunning.value &&
+    pendingInfo.value.pendingCount === 0 &&
+    workflowStatus.value.latestRun?.conclusion === 'success'
+)
 
 const progressSteps = computed(() => {
   const status = workflowStatus.value
@@ -578,6 +608,9 @@ onMounted(() => {
     context?.repo ?? configStore.config.repo,
     configStore.config.branch
   )
+  // CI 自动触发工作流后用户不再手动点「触发」→ startPolling 不会启动，
+  // 进页面即启动被动监视，保证运行状态与完成提示持续可见
+  workflowStore.startPassiveWatch(WORKFLOW_OWNER, WORKFLOW_REPO, FRONTEND_OWNER, FRONTEND_REPO)
   refresh()
 })
 
@@ -882,6 +915,24 @@ onUnmounted(() => {
   &__error {
     background: rgba($danger, 0.1);
     color: $danger;
+  }
+
+  &__deploy-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-2;
+    padding: $spacing-3;
+    border-radius: $radius-lg;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    color: rgba(219, 234, 254, 0.96);
+    font-size: $font-size-xs;
+    line-height: 1.65;
+
+    .el-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
   }
 
   &__failure {

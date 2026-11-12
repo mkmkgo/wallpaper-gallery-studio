@@ -30,11 +30,16 @@ export const useWorkflowStore = defineStore('workflow', () => {
     triggerTime: null // 触发时间
   })
 
+  // 前端部署（gallery 仓自动部署链路）运行状态
+  const frontendStatus = ref({ hasRunning: false, latestRun: null })
+
   // 本次会话上传成功的文件数
   const sessionUploadCount = ref(0)
 
   // 轮询定时器
   let pollTimer = null
+  // 被动状态监视定时器（CI 自动触发场景，进页面常驻低频刷新）
+  let passiveTimer = null
   // 延迟定时器（用于触发后延迟开始轮询、完成后延迟刷新等）
   let delayTimers = []
   // 轮询配置
@@ -323,6 +328,48 @@ export const useWorkflowStore = defineStore('workflow', () => {
     pollStartTime = null
   }
 
+  // 被动状态监视：CI 自动触发工作流后，用户不再手动点触发按钮，
+  // startPolling 不会启动，状态面板会永远停在首次快照。这里进页面即常驻低频刷新。
+  // 不复用 startPolling：它有「无运行且非刚触发就 stopPolling」逻辑，被动模式下会立刻自杀。
+  // 每 tick 两个仓各一次 GET /actions/runs，15s 间隔合计约 480 次/小时，
+  // 远低于 GitHub OAuth token 5000 次/小时限额；token 复用现有 setToken() 注入值。
+  function startPassiveWatch(
+    workflowOwner,
+    workflowRepo,
+    frontendOwner,
+    frontendRepo,
+    interval = 15000
+  ) {
+    stopPassiveWatch()
+    if (!workflowOwner || !workflowRepo) return
+
+    const tick = async () => {
+      await refreshWorkflowStatus(workflowOwner, workflowRepo)
+      if (frontendOwner && frontendRepo) {
+        try {
+          const deploy = await githubService.hasRunningWorkflow(frontendOwner, frontendRepo)
+          frontendStatus.value = {
+            hasRunning: !!deploy?.hasRunning,
+            latestRun: deploy?.latestRun || null
+          }
+        } catch (e) {
+          console.warn('[WorkflowStore] 查询前端部署状态失败:', e)
+        }
+      }
+    }
+
+    tick()
+    passiveTimer = setInterval(tick, interval)
+    console.log('[WorkflowStore] 启动被动状态监视，间隔:', interval, 'ms')
+  }
+
+  function stopPassiveWatch() {
+    if (passiveTimer) {
+      clearInterval(passiveTimer)
+      passiveTimer = null
+    }
+  }
+
   // 设置图床仓库配置（用于完成后刷新）
   function setImageRepoConfig(owner, repo, branch) {
     pollConfig.imageOwner = owner
@@ -344,6 +391,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   function cleanup() {
     console.log('[WorkflowStore] 清理资源')
     stopPolling()
+    stopPassiveWatch()
     clearDelayTimers()
     // 重置状态
     workflowStatus.value = {
@@ -363,6 +411,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     polling,
     pendingInfo,
     workflowStatus,
+    frontendStatus,
     sessionUploadCount,
     statsData,
     // 计算属性
@@ -378,6 +427,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     rollbackLastRelease,
     startPolling,
     stopPolling,
+    startPassiveWatch,
+    stopPassiveWatch,
     setImageRepoConfig,
     addSessionUpload,
     resetSessionUpload,
