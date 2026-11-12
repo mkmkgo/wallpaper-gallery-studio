@@ -347,10 +347,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
       await refreshWorkflowStatus(workflowOwner, workflowRepo)
       if (frontendOwner && frontendRepo) {
         try {
-          const deploy = await githubService.hasRunningWorkflow(frontendOwner, frontendRepo)
+          // gallery 仓还跑着 Export Stats / Watch CDN Tag 等定时任务，
+          // hasRunningWorkflow() 会把它们也算进来（runs[0] 甚至可能不是部署流），
+          // 导致「前端部署」显示无关状态。这里只保留三条部署流再取样。
+          const data = await githubService.getWorkflowRuns(frontendOwner, frontendRepo, 10)
+          const deployRuns = (data?.workflow_runs || []).filter(run =>
+            /^Deploy to /i.test(run.name || '')
+          )
+          const running = deployRuns.find(
+            run => run.status === 'queued' || run.status === 'in_progress'
+          )
           frontendStatus.value = {
-            hasRunning: !!deploy?.hasRunning,
-            latestRun: deploy?.latestRun || null
+            hasRunning: !!running,
+            latestRun: deployRuns[0] || null
           }
         } catch (e) {
           console.warn('[WorkflowStore] 查询前端部署状态失败:', e)
