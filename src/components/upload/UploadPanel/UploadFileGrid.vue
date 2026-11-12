@@ -200,22 +200,20 @@ defineExpose({
 @use '@/styles/variables' as *;
 
 .upload-file-grid {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   margin-top: $spacing-3;
   overflow: hidden;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  height: clamp(480px, 60vh, 720px);
+  max-height: clamp(480px, 60vh, 720px);
 
-  // 151be3b 把宽屏高度链改成 height:auto 后，flex item 既可能塌陷为 0，
-  // 也可能被 607 张卡片撑到两万像素；min-height 只是下限挡不住后者。
-  // 给宽屏一个明确 height + max-height 并退出 flex 剩余空间分配，
-  // 让 __grid 的 overflow-y:auto 真正生效，页面滚动仍由 .layout__main 负责。
-  @media (min-width: 1181px) {
-    flex: 0 0 auto;
-    height: clamp(480px, 60vh, 720px);
-    max-height: clamp(480px, 60vh, 720px);
-  }
+  // 151be3b 把宽屏高度链改成 height:auto 后，本容器处于 auto 高度的 flex 父链里，
+  // flex:1 既可能塌陷为 0、也可能被 607 张卡片撑到两万像素；min-height 只是下限挡不住后者。
+  // 这里直接给确定 height + max-height 并退出 flex 剩余空间分配(flex:0 0 auto)，
+  // 让 __grid 的 overflow-y:auto 真正生效，页面整体滚动仍由 .layout__main 负责。
+  // 关键：不依赖 @media(min-width:1181px) 门槛，任何窗口宽度都生效，避免窄窗口又看不见。
 
   &__batch {
     display: flex;
