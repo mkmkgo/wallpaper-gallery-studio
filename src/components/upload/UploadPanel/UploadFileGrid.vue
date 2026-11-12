@@ -200,12 +200,18 @@ defineExpose({
 @use '@/styles/variables' as *;
 
 .upload-file-grid {
-  flex: 1;
+  flex: 1 1 auto;
   margin-top: $spacing-3;
   overflow: hidden;
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  // 151be3b 把宽屏高度链改成 height:auto 后，本容器会塌陷为 0；
+  // 用 min-height 给 flex item 一个不依赖父链的硬下限，同时放大可用高度。
+  @media (min-width: 1181px) {
+    min-height: clamp(480px, 60vh, 720px);
+  }
 
   &__batch {
     display: flex;
@@ -349,6 +355,7 @@ defineExpose({
     justify-items: stretch;
     min-height: 0;
     scrollbar-gutter: stable;
+    max-height: 100%;
 
     @media (min-width: 1400px) {
       --upload-grid-item-size: 156px;
