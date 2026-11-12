@@ -207,10 +207,14 @@ defineExpose({
   display: flex;
   flex-direction: column;
 
-  // 151be3b 把宽屏高度链改成 height:auto 后，本容器会塌陷为 0；
-  // 用 min-height 给 flex item 一个不依赖父链的硬下限，同时放大可用高度。
+  // 151be3b 把宽屏高度链改成 height:auto 后，flex item 既可能塌陷为 0，
+  // 也可能被 607 张卡片撑到两万像素；min-height 只是下限挡不住后者。
+  // 给宽屏一个明确 height + max-height 并退出 flex 剩余空间分配，
+  // 让 __grid 的 overflow-y:auto 真正生效，页面滚动仍由 .layout__main 负责。
   @media (min-width: 1181px) {
-    min-height: clamp(480px, 60vh, 720px);
+    flex: 0 0 auto;
+    height: clamp(480px, 60vh, 720px);
+    max-height: clamp(480px, 60vh, 720px);
   }
 
   &__batch {
