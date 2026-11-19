@@ -45,10 +45,28 @@ export function getAuthUrl() {
 }
 
 // 生成随机 state 防止 CSRF
+// 注意：globalThis.crypto.randomUUID 只在「安全上下文」下存在（https / localhost）。
+// 用 http 打开、或老旧 WebView / 部分浏览器里它是 undefined，会直接抛
+// "globalThis.crypto.randomUUID is not a function"。所以做三级降级兜底。
 function generateState() {
-  const state = globalThis.crypto.randomUUID()
+  const state = randomToken()
   sessionStorage.setItem('oauth_state', state)
   return state
+}
+
+function randomToken() {
+  const webCrypto = globalThis.crypto
+  if (webCrypto && typeof webCrypto.randomUUID === 'function') {
+    return webCrypto.randomUUID()
+  }
+  if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
+    const bytes = webCrypto.getRandomValues(new Uint8Array(16))
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  }
+  // 最差兜底：时间戳 + 双随机数，足够当一次性 CSRF state 用
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random()
+    .toString(36)
+    .slice(2)}`
 }
 
 // 验证 state
