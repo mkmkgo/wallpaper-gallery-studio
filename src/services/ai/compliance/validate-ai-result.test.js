@@ -294,8 +294,8 @@ describe('挂点覆盖：人工编辑与 provider 兜底', () => {
 })
 
 describe('分类名黑名单覆盖全部文本字段（路径 / 文件名漏检回归）', () => {
-  it('blockedCategoryPhrases 由 blockedCategories 派生且未扩词', () => {
-    expect(COMPLIANCE_POLICY.blockedCategories).toEqual(['政治'])
+  it('blockedCategoryPhrases 由 blockedCategories 派生（政治 + 爱国主题）', () => {
+    expect(COMPLIANCE_POLICY.blockedCategories).toEqual(['政治', '爱国主题'])
     expect(COMPLIANCE_POLICY.blockedCategoryPhrases).toEqual(COMPLIANCE_POLICY.blockedCategories)
   })
 
@@ -361,6 +361,54 @@ describe('分类名黑名单覆盖全部文本字段（路径 / 文件名漏检�
       const verdict = validateAiResult(baseResult(overrides))
       expect(verdict.rejected).toBe(false)
       expect(verdict.accepted).toBe(true)
+    }
+  })
+})
+
+describe('爱国主题 / 爱国·政党·领袖类内容（2026-11-19 扩充）', () => {
+  it('分类黑名单包含「爱国主题」，子分类与路径分段都会被拦', () => {
+    expect(COMPLIANCE_POLICY.blockedCategories).toContain('爱国主题')
+    const bySub = validateAiResult(baseResult({ subcategory: '爱国主题' }))
+    expect(bySub.rejected).toBe(true)
+    expect(bySub.reasonCode).toBe(REASON_CODES.BLOCKED_CATEGORY)
+
+    const byPath = validateAiResult(
+      baseResult({ path: 'wallpaper/mobile/创意/爱国主题/示例.jpg', subcategory: '通用' })
+    )
+    expect(byPath.rejected).toBe(true)
+    expect(byPath.reasonCode).toBe(REASON_CODES.BLOCKED_CATEGORY)
+  })
+
+  it('典型条目标题 / 关键词 / 描述命中即拒', () => {
+    const cases = [
+      { displayTitle: '天安门广场夜景' },
+      { displayTitle: '人民万岁' },
+      { keywords: ['国旗', '五星红旗'] },
+      { description: '飘扬的红旗与国徽' },
+      { displayTitle: '国庆阅兵盛典' },
+      { keywords: ['革命', '红军'] },
+      { description: '解放军军装士兵' },
+      { displayTitle: '祖国万岁' }
+    ]
+    for (const overrides of cases) {
+      const verdict = validateAiResult(baseResult(overrides))
+      expect(verdict.rejected).toBe(true)
+      expect(verdict.reasonCode).toBe(REASON_CODES.SENSITIVE_CONTENT)
+    }
+  })
+
+  it('不误伤：红旗袍、雷电将军、古装将军、古堡士兵仍放行', () => {
+    const safeCases = [
+      { displayTitle: '红旗袍优雅人像' },
+      { displayTitle: '红色旗袍侧颜' },
+      { keywords: ['旗袍', '暗红色'] },
+      { displayTitle: '雷电将军制服' },
+      { displayTitle: '古装将军与白狼' },
+      { description: '士兵攀登古堡' }
+    ]
+    for (const overrides of safeCases) {
+      const verdict = validateAiResult(baseResult(overrides))
+      expect(verdict.rejected).toBe(false)
     }
   })
 })

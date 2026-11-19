@@ -9,11 +9,14 @@ import { useConfigStore } from '@/stores/config'
 const SERIES_KEYS = ['desktop', 'mobile', 'avatar']
 const CACHE_TTL = 5 * 60 * 1000
 
-// [LOCAL] 合规过滤（2026-10-25）：政治类内容不适合壁纸产品，与小程序
-// miniprogram-wallpaper/config/index.js 的 BLOCKED_CATEGORIES 保持同款。
+// [LOCAL] 合规过滤（2026-10-25，2026-11-19 扩充）：政治类与爱国主题内容不适合
+// 壁纸产品，与小程序 miniprogram-wallpaper/config/index.js 的
+// BLOCKED_CATEGORIES / BLOCKED_SUBCATEGORIES 保持同款。
 // 动态分类树有三条来源（manifest / GitHub 目录扫描 / 本地回退），
-// 任一条漏掉都会让 AI prompt 重新带上政治分类，故在出口统一收口。
-const BLOCKED_CATEGORIES = ['政治']
+// 任一条漏掉都会让 AI prompt 重新带上这些分类，故在出口统一收口。
+// ⚠️ 爱国主题是三级目录（如 mobile/插画/爱国主题），applyCategoryBlocklist
+//    会同时清理 third 的键与数组项，必须放在这里才能让 AI 见不到它。
+const BLOCKED_CATEGORIES = ['政治', '爱国主题']
 
 let categoryDirectoryCache = null
 let categoryDirectoryTimestamp = 0
