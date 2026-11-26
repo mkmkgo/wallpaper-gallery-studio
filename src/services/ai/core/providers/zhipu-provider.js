@@ -128,8 +128,16 @@ export class ZhipuProvider extends BaseAIProvider {
     const candidates = [this.baseUrl, ...this.fallbackBaseUrls.filter(url => url !== this.baseUrl)]
     let lastNetworkError = null
 
+    // 前端超时：略短于 EdgeOne 函数 maxDuration（edgeone.json 配 120s），
+    // 保证前端先主动感知超时，而不是等函数被杀后收到连接中断（Failed to fetch）。
+    // 历史：函数默认 30s 上限，GLM-4V 免费模型分析图片经常超 30s，函数被强杀
+    // → 浏览器报「网络请求失败」，实为函数执行超时（2026-11-26 定位）。
+    const REQUEST_TIMEOUT_MS = 115000
+
     for (const baseUrl of candidates) {
       let response
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       try {
         response = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
@@ -137,11 +145,20 @@ export class ZhipuProvider extends BaseAIProvider {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
-          body: requestBody
+          body: requestBody,
+          signal: controller.signal
         })
       } catch (error) {
-        lastNetworkError = error
+        if (error?.name === 'AbortError') {
+          lastNetworkError = new Error(
+            `AI 请求超时（${Math.round(REQUEST_TIMEOUT_MS / 1000)} 秒未响应）。请重试，或到设置中切换更快的模型（如 glm-4v-flash）`
+          )
+        } else {
+          lastNetworkError = error
+        }
         continue
+      } finally {
+        clearTimeout(timeoutId)
       }
 
       if (response.status >= 500) {

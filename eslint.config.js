@@ -29,6 +29,7 @@ export default [
         File: 'readonly',
         FormData: 'readonly',
         Blob: 'readonly',
+        AbortController: 'readonly',
         indexedDB: 'readonly',
         btoa: 'readonly',
         atob: 'readonly',
