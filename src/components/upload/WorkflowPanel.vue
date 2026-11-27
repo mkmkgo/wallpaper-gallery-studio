@@ -69,6 +69,13 @@
             </span>
           </div>
 
+          <div v-if="pendingBreakdownText" class="workflow-panel__stat">
+            <span class="workflow-panel__stat-label">分仓明细</span>
+            <span class="workflow-panel__stat-value workflow-panel__stat-value--muted">
+              {{ pendingBreakdownText }}
+            </span>
+          </div>
+
           <div v-if="workflowStatus.latestRun && !isRunning" class="workflow-panel__stat">
             <span class="workflow-panel__stat-label">上次运行</span>
             <span class="workflow-panel__stat-value">
@@ -78,7 +85,12 @@
                 class="workflow-panel__run-tag"
                 @click="openWorkflowRun"
               >
-                {{ getRunStatusText(workflowStatus.latestRun) }}
+                {{
+                  getRunStatusText(workflowStatus.latestRun) +
+                  (getRunTime(workflowStatus.latestRun)
+                    ? ` · ${getRunTime(workflowStatus.latestRun)}`
+                    : '')
+                }}
               </el-tag>
             </span>
           </div>
@@ -152,8 +164,10 @@
           <div v-if="showDeployHint" class="workflow-panel__deploy-hint">
             <el-icon><InfoFilled /></el-icon>
             <span
-              >图床处理已完成，前端已由 CI
-              自动重建。若线上数据尚未更新，可点击下方「重新部署前端」手动补触发。</span
+              >全部图床仓均已处理完成（上次运行
+              {{
+                getRunTime(workflowStatus.latestRun)
+              }}）。若线上数据尚未更新，可点击下方「重新部署前端」手动补触发。</span
             >
           </div>
 
@@ -177,6 +191,9 @@
                 :key="file.filename"
                 class="workflow-panel__file"
               >
+                <el-tag v-if="file.repoLabel" type="info" size="small">
+                  {{ file.repoLabel }}
+                </el-tag>
                 <el-tag :type="getSeriesType(file.series)" size="small">
                   {{ file.series }}
                 </el-tag>
@@ -208,12 +225,13 @@
             'workflow-panel__btn--disabled':
               !workflowStore.canTrigger &&
               !workflowStatus.hasRunning &&
-              !workflowStatus.justTriggered,
+              !workflowStatus.justTriggered &&
+              !isQueryError,
             'workflow-panel__btn--running':
               workflowStatus.hasRunning || workflowStatus.justTriggered
           }"
-          :disabled="!workflowStore.canTrigger || triggering"
-          @click="handleTrigger"
+          :disabled="isQueryError ? triggering : !workflowStore.canTrigger || triggering"
+          @click="isQueryError ? refresh() : handleTrigger()"
         >
           <el-icon v-if="triggering" class="is-loading"><Loading /></el-icon>
           <el-icon
@@ -226,7 +244,10 @@
           <span v-if="triggering">触发中...</span>
           <span v-else-if="workflowStatus.justTriggered">已触发，等待启动...</span>
           <span v-else-if="workflowStatus.hasRunning">运行中...</span>
-          <span v-else-if="pendingInfo.pendingCount === 0">无待处理</span>
+          <span v-else-if="isQueryError">状态获取失败，点击重试</span>
+          <span v-else-if="pendingInfo.pendingCount === 0">
+            {{ workflowStatus.latestRun ? '已处理完成' : '无待处理' }}
+          </span>
           <span v-else>触发工作流</span>
         </button>
 
@@ -278,7 +299,13 @@ import GlassCard from '@/components/GlassCard.vue'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
-import { resolveSeriesRepoContextForConfig } from '@/app/config/app-config'
+import { resolveSeriesRepoContextForConfig, listEnabledImageRepos } from '@/app/config/app-config'
+import {
+  WORKFLOW_OWNER,
+  WORKFLOW_REPO,
+  FRONTEND_OWNER,
+  FRONTEND_REPO
+} from '@/config/workflow-targets'
 
 const props = defineProps({
   collapsed: { type: Boolean, default: false },
@@ -304,6 +331,26 @@ const workflowStatus = computed(() => workflowStore.workflowStatus)
 const isAdmin = computed(() => authStore.permissionLevel === 'admin')
 const canUpload = computed(() => authStore.canUpload)
 const isRunning = computed(() => workflowStore.isRunning)
+
+// 聚合查询整体失败（一个仓的待处理都没拿到）→ 按钮变为「点击重试」
+const isQueryError = computed(
+  () => !!pendingInfo.value.error && pendingInfo.value.pendingCount === 0
+)
+
+// 多仓时的分仓待处理明细（如「主仓 144」），单仓不重复展示
+const pendingBreakdownText = computed(() => {
+  const repos = workflowStore.pendingRepos
+  if (repos.length <= 1 || pendingInfo.value.pendingCount === 0) return ''
+  return repos
+    .filter(r => r.pendingCount > 0)
+    .map(r => `${r.label} ${r.pendingCount}`)
+    .join(' · ')
+})
+
+// 上次运行的相对时间（无记录返回空串）
+function getRunTime(run) {
+  return formatDate(run?.run_started_at || run?.created_at)
+}
 
 // 工作流跑完（成功）、无待处理、无运行中 → 提示可手动补触发前端部署
 const showDeployHint = computed(
@@ -366,16 +413,6 @@ function getProgressTitle() {
   return '工作流运行中...'
 }
 
-const LEGACY_WORKFLOW_OWNER = 'mkmkgo'
-const LEGACY_WORKFLOW_REPO = 'wallpaper-gallery-workflow'
-const LEGACY_FRONTEND_OWNER = 'mkmkgo'
-const LEGACY_FRONTEND_REPO = 'wallpaper-gallery'
-
-const WORKFLOW_OWNER = import.meta.env.VITE_WORKFLOW_OWNER || LEGACY_WORKFLOW_OWNER
-const WORKFLOW_REPO = import.meta.env.VITE_WORKFLOW_REPO || LEGACY_WORKFLOW_REPO
-const FRONTEND_OWNER = import.meta.env.VITE_FRONTEND_OWNER || LEGACY_FRONTEND_OWNER
-const FRONTEND_REPO = import.meta.env.VITE_FRONTEND_REPO || LEGACY_FRONTEND_REPO
-
 /**
  * 当前生效的图床仓库完整上下文（与上传页「目标仓库」下拉框保持一致）：
  * 用户手动选了仓（props.currentRepoId）就以它为准，否则走分配器自动推荐。
@@ -396,7 +433,9 @@ async function refresh() {
   const { branch } = configStore.config
   try {
     const tasks = [
-      workflowStore.refreshPendingInfo(owner, repo, branch),
+      // 待处理数跨全部启用仓聚合：只查当前 series 的仓会在 series 停留在
+      // desktop 时漏掉主仓新图，误报「无待处理」并禁用触发按钮
+      workflowStore.refreshAllPendingInfo(listEnabledImageRepos(configStore.config), branch),
       workflowStore.refreshStatsData(owner, repo, branch)
     ]
 
@@ -415,22 +454,26 @@ async function handleTrigger() {
     ElMessage.warning('未配置工作流仓库，请先配置 VITE_WORKFLOW_OWNER 和 VITE_WORKFLOW_REPO')
     return
   }
-  // 触发目标仓 = 上传页当前生效的仓（手动选择优先，否则分配器推荐）
-  const context = resolveImageRepoContext()
-  if (!context) {
-    ElMessage.error('未找到可用的目标仓库，请先到系统设置配置仓库注册表')
+  // 触发目标 = 全部有待处理的仓（逐仓 dispatch 对应的 workflowEvent）
+  const targets = workflowStore.pendingRepos.filter(r => r.pendingCount > 0 && r.workflowEvent)
+  if (!targets.length) {
+    ElMessage.warning('没有待处理的图片')
     return
   }
   try {
     const publisher = authStore.user?.login || ''
-    await workflowStore.triggerWorkflow(
+    await workflowStore.triggerWorkflowForRepos(
       WORKFLOW_OWNER,
       WORKFLOW_REPO,
+      targets,
       '',
-      publisher,
-      context.workflowEvent
+      publisher
     )
-    ElMessage.success('工作流已触发，正在处理中...')
+    ElMessage.success(
+      targets.length > 1
+        ? `已触发 ${targets.length} 个仓库的工作流，正在处理中...`
+        : '工作流已触发，正在处理中...'
+    )
     setTimeout(() => {
       workflowStore.refreshWorkflowStatus(WORKFLOW_OWNER, WORKFLOW_REPO)
     }, 2000)
@@ -602,11 +645,13 @@ watch([() => props.currentSeries, () => props.currentRepoId], () => {
 })
 
 onMounted(() => {
+  const repos = listEnabledImageRepos(configStore.config)
   const context = resolveImageRepoContext()
   workflowStore.setImageRepoConfig(
     context?.owner ?? configStore.config.owner,
     context?.repo ?? configStore.config.repo,
-    configStore.config.branch
+    configStore.config.branch,
+    repos
   )
   // CI 自动触发工作流后用户不再手动点「触发」→ startPolling 不会启动，
   // 进页面即启动被动监视，保证运行状态与完成提示持续可见

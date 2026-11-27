@@ -141,6 +141,21 @@ export function resolveSeriesRepoForConfig(userConfig = {}, series = '', options
 }
 
 /**
+ * 列出全部启用的图床仓（owner/repo 齐全）
+ * 供工作流面板「跨仓聚合待处理数」与上传后自动触发使用：
+ * 待处理统计不能只看当前 series 的仓，否则 series 停留在 desktop 时
+ * 会漏掉主仓的新图，误报「无待处理」。
+ *
+ * @param {object} userConfig - configStore.config（localStorage 中的用户配置）
+ * @returns {Array<{ id, label, owner, repo, branch, workflowEvent }>} 归一化后的启用条目
+ */
+export function listEnabledImageRepos(userConfig = {}) {
+  return resolveRepositoryRegistry(userConfig).filter(
+    entry => entry.enabled && entry.owner && entry.repo
+  )
+}
+
+/**
  * 按 series 解析目标仓库的**完整上下文**（融合用户配置与仓库注册表）
  *
  * 与 `resolveSeriesRepoForConfig` 的区别：保留分配结果的 repoId / workflowEvent /

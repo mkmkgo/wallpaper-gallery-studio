@@ -156,6 +156,13 @@
                 />
               </el-select>
             </el-form-item>
+            <el-form-item label="上传后自动触发工作流">
+              <el-switch v-model="autoTriggerWorkflow" />
+            </el-form-item>
+            <p class="settings-view__hint">
+              开启后，上传成功且检测到新图时自动触发对应仓库的发布工作流（生成缩略图 / 打
+              tag）；关闭则需在上传页「发布工作流」面板手动点「触发工作流」。
+            </p>
           </div>
 
           <!-- 仓库列表 -->
@@ -413,6 +420,7 @@ function createRepoDraft() {
 const repoDraft = ref(createRepoDraft())
 const assignment = ref(configStore.config.assignment === 'manual' ? 'manual' : 'auto')
 const defaultRepoId = ref(configStore.config.defaultRepoId || 'main')
+const autoTriggerWorkflow = ref(configStore.config.autoTriggerWorkflow !== false)
 
 /** 展示用条目：补上 owner / branch 缺省，保留 enabled=false 的仓库 */
 const repoEntries = computed(() =>
@@ -709,7 +717,8 @@ async function handleSave() {
       // 仓库注册表：新增 / 编辑 / 停用 / 删除都在这里落盘
       repositories: repoEntries.value,
       assignment: assignment.value,
-      defaultRepoId: defaultRepoId.value
+      defaultRepoId: defaultRepoId.value,
+      autoTriggerWorkflow: autoTriggerWorkflow.value
     })
 
     const valid = await configStore.validateConfig()
@@ -742,6 +751,7 @@ function handleReset() {
   repoDraft.value = createRepoDraft()
   assignment.value = configStore.config.assignment === 'manual' ? 'manual' : 'auto'
   defaultRepoId.value = configStore.config.defaultRepoId || 'main'
+  autoTriggerWorkflow.value = configStore.config.autoTriggerWorkflow !== false
 
   validationResult.value = null
   ElMessage.success('已重置为默认配置')

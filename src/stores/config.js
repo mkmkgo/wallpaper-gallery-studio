@@ -18,7 +18,9 @@ const DEFAULT_CONFIG = {
   version: 2,
   defaultRepoId: DEFAULT_APP_CONFIG.repository.defaultRepoId,
   assignment: DEFAULT_APP_CONFIG.repository.assignment,
-  repositories: [...DEFAULT_APP_CONFIG.repository.repositories]
+  repositories: [...DEFAULT_APP_CONFIG.repository.repositories],
+  // 上传成功后自动触发发布工作流（可在设置页关闭改为手动）
+  autoTriggerWorkflow: true
 }
 
 // 默认配置的深拷贝（repositories 是数组，避免各实例共享同一引用）
@@ -49,7 +51,9 @@ export const useConfigStore = defineStore('config', () => {
         repositories:
           Array.isArray(parsed.repositories) && parsed.repositories.length
             ? parsed.repositories
-            : [...DEFAULT_CONFIG.repositories]
+            : [...DEFAULT_CONFIG.repositories],
+        // 布尔开关：未存储（旧配置）时默认开启；显式 false 才关闭
+        autoTriggerWorkflow: parsed.autoTriggerWorkflow !== false
       }
     } catch {
       return createDefaultConfig()

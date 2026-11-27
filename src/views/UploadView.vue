@@ -280,7 +280,12 @@ import EditAIResultModal from '@/components/upload/EditAIResultModal.vue'
 import { githubService } from '@/services/github'
 import { localStorageService } from '@/services/localStorage'
 import { clearUploadCategoryTreeCache } from '@/services/upload/category-directory'
-import { resolveRepositoryRegistry, resolveSeriesRepoForConfig } from '@/app/config/app-config'
+import {
+  resolveRepositoryRegistry,
+  resolveSeriesRepoForConfig,
+  listEnabledImageRepos
+} from '@/app/config/app-config'
+import { WORKFLOW_OWNER, WORKFLOW_REPO } from '@/config/workflow-targets'
 import { allocateRepo, listCandidates } from '@/features/upload-workspace/domain/repo-registry'
 import { formatRepoCapacity } from '@/features/upload-workspace/domain/repo-capacity'
 import { useConfigStore } from '@/stores/config'
@@ -302,7 +307,7 @@ const previewPanelRef = ref(null)
 const workflowPanelRef = ref(null)
 const forceCategoryFetch = ref(false)
 const pageLoading = ref(false) // 页面加载状态，默认不显示 loading
-const series = ref('desktop')
+const series = ref(uploadStore.series)
 const treeData = ref([])
 const treeKey = ref(0) // 用于强制刷新树组件
 const loading = ref(false)
@@ -816,18 +821,50 @@ function handleUploadResults(results, messagePrefix = '上传') {
   // 上传后仓库体积变了，刷新容量提示（下次自动选仓用得上）
   loadRepoCapacity(true)
 
-  // 刷新工作流状态（延迟 2 秒等待 GitHub API 同步）
+  // 刷新工作流状态（延迟 2 秒等待 GitHub API 同步），随后按开关自动触发
   if (ok > 0) {
     setTimeout(async () => {
-      const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
+      const repos = listEnabledImageRepos(configStore.config)
       const { branch } = configStore.config
-      await workflowStore.refreshPendingInfo(owner, repo, branch)
-      if (workflowStore.pendingInfo.pendingCount === 0) {
-        setTimeout(() => {
-          workflowStore.refreshPendingInfo(owner, repo, branch)
-        }, 2000)
+      let info = await workflowStore.refreshAllPendingInfo(repos, branch)
+      if (info.pendingCount === 0) {
+        // GitHub API 可能有同步延迟，再等 2 秒重试一次
+        info = await new Promise(resolve => {
+          setTimeout(() => {
+            resolve(workflowStore.refreshAllPendingInfo(repos, branch))
+          }, 2000)
+        })
       }
+      await maybeAutoTriggerWorkflow(info)
     }, 2000)
+  }
+}
+
+/**
+ * 上传后自动触发工作流（系统设置可关）：
+ * 对全部有待处理的仓逐仓 dispatch，替代过去「找不到按钮/不知道触没触发」的手动流程
+ */
+async function maybeAutoTriggerWorkflow(info) {
+  if (!info || info.pendingCount === 0) return
+  if (configStore.config.autoTriggerWorkflow === false) return
+
+  const targets = workflowStore.pendingRepos.filter(r => r.pendingCount > 0 && r.workflowEvent)
+  if (!targets.length) return
+
+  try {
+    await workflowStore.triggerWorkflowForRepos(
+      WORKFLOW_OWNER,
+      WORKFLOW_REPO,
+      targets,
+      '',
+      authStore.user?.login || ''
+    )
+    ElMessage.success(
+      `已自动触发工作流（${targets.map(t => t.label).join('、')}，共 ${info.pendingCount} 张待处理）`
+    )
+  } catch (error) {
+    console.error('自动触发工作流失败:', error)
+    ElMessage.warning('自动触发工作流失败，请到右侧「发布工作流」面板手动触发')
   }
 }
 
@@ -877,9 +914,10 @@ async function handleRetryMetadata() {
       ElMessage.success('元数据已重新生成并提交')
       uploadStore.clearSuccessFiles()
 
-      const { owner, repo } = resolveSeriesRepoForConfig(configStore.config, series.value)
-      const { branch } = configStore.config
-      await workflowStore.refreshPendingInfo(owner, repo, branch)
+      await workflowStore.refreshAllPendingInfo(
+        listEnabledImageRepos(configStore.config),
+        configStore.config.branch
+      )
     } else {
       ElMessage.error(result.error || '元数据重试失败')
     }

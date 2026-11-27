@@ -8,7 +8,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const triggering = ref(false)
   const polling = ref(false)
 
-  // 待处理图片信息
+  // 待处理图片信息（跨仓聚合结果，见 refreshAllPendingInfo）
   const pendingInfo = ref({
     pendingCount: 0,
     pendingFiles: [],
@@ -17,6 +17,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
     message: null,
     error: null
   })
+
+  // 各仓待处理明细：[{ repoId, label, owner, repo, workflowEvent, pendingCount, latestTag, error }]
+  const pendingRepos = ref([])
 
   // stats.json 统计数据
   const statsData = ref(null)
@@ -43,7 +46,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   // 延迟定时器（用于触发后延迟开始轮询、完成后延迟刷新等）
   let delayTimers = []
   // 轮询配置
-  let pollConfig = { owner: '', repo: '', imageOwner: '', imageRepo: '', branch: '' }
+  let pollConfig = { owner: '', repo: '', imageOwner: '', imageRepo: '', branch: '', repos: null }
   // 轮询开始时间
   let pollStartTime = null
   // 最大轮询时间（30分钟）
@@ -96,7 +99,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     return null
   })
 
-  // 刷新待处理图片信息
+  // 刷新待处理图片信息（单仓，保留给只需要单仓结果的场景）
   async function refreshPendingInfo(owner, repo, branch = 'main') {
     loading.value = true
     try {
@@ -106,6 +109,109 @@ export const useWorkflowStore = defineStore('workflow', () => {
     } catch (error) {
       pendingInfo.value.error = error.message
       throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 跨仓聚合刷新待处理信息（工作流面板的标准刷新路径）
+   *
+   * 为什么不能只查当前 series 的仓：series 默认 'desktop' 且刷新后重置，
+   * 只查 desktop 仓会漏掉主仓的新图，误报「无待处理」并禁用触发按钮。
+   * 这里遍历全部启用图床仓，聚合 pendingCount / pendingFiles，并保留各仓明细。
+   *
+   * @param {Array<{ id, label, owner, repo, branch, workflowEvent }>} repos - 启用的图床仓列表
+   * @param {string} [branch] - 缺省分支（仓自带 branch 时优先用仓的）
+   * @returns {Promise<object>} 聚合后的 pendingInfo
+   */
+  async function refreshAllPendingInfo(repos, branch = 'main') {
+    loading.value = true
+    try {
+      const list = (repos || []).filter(r => r && r.owner && r.repo)
+      if (!list.length) {
+        pendingRepos.value = []
+        pendingInfo.value = {
+          pendingCount: 0,
+          pendingFiles: [],
+          latestTag: null,
+          latestTagInfo: null,
+          message: '未配置可用的图床仓库',
+          error: null
+        }
+        return pendingInfo.value
+      }
+
+      const results = await Promise.allSettled(
+        list.map(repo =>
+          githubService.getPendingImages(repo.owner, repo.repo, branch || repo.branch || 'main')
+        )
+      )
+
+      const breakdown = []
+      const pendingFiles = []
+      let pendingCount = 0
+      let primaryTag = null
+      let firstError = null
+
+      results.forEach((result, index) => {
+        const meta = list[index]
+        const label = meta.label || meta.repo
+
+        if (result.status === 'fulfilled') {
+          const info = result.value
+          breakdown.push({
+            repoId: meta.id,
+            label,
+            owner: meta.owner,
+            repo: meta.repo,
+            workflowEvent: meta.workflowEvent,
+            pendingCount: info.pendingCount || 0,
+            latestTag: info.latestTag || null,
+            error: info.error || null
+          })
+          if (info.error && !firstError) firstError = `${label}: ${info.error}`
+          pendingCount += info.pendingCount || 0
+          for (const file of info.pendingFiles || []) {
+            pendingFiles.push({ ...file, repoId: meta.id, repoLabel: label })
+          }
+          if ((info.pendingCount || 0) > 0 && !primaryTag) {
+            primaryTag = { ...(info.latestTagInfo || {}), name: info.latestTag, repo: meta.repo }
+          }
+        } else {
+          const reason = result.reason?.message || '查询失败'
+          breakdown.push({
+            repoId: meta.id,
+            label,
+            owner: meta.owner,
+            repo: meta.repo,
+            workflowEvent: meta.workflowEvent,
+            pendingCount: 0,
+            latestTag: null,
+            error: reason
+          })
+          if (!firstError) firstError = `${label}: ${reason}`
+        }
+      })
+
+      // 全部无待处理时，「最新版本」回落到第一个查到 tag 的仓
+      if (!primaryTag) {
+        const fallback = results.find(r => r.status === 'fulfilled' && r.value.latestTag)
+        if (fallback) {
+          primaryTag = { ...(fallback.value.latestTagInfo || {}), name: fallback.value.latestTag }
+        }
+      }
+
+      pendingRepos.value = breakdown
+      pendingInfo.value = {
+        pendingCount,
+        pendingFiles,
+        latestTag: primaryTag?.name || null,
+        latestTagInfo: primaryTag,
+        message: null,
+        error: firstError
+      }
+      return pendingInfo.value
     } finally {
       loading.value = false
     }
@@ -152,7 +258,13 @@ export const useWorkflowStore = defineStore('workflow', () => {
           addDelayTimer(async () => {
             try {
               await Promise.all([
-                refreshPendingInfo(pollConfig.imageOwner, pollConfig.imageRepo, pollConfig.branch),
+                pollConfig.repos?.length
+                  ? refreshAllPendingInfo(pollConfig.repos, pollConfig.branch)
+                  : refreshPendingInfo(
+                      pollConfig.imageOwner,
+                      pollConfig.imageRepo,
+                      pollConfig.branch
+                    ),
                 refreshStatsData(pollConfig.imageOwner, pollConfig.imageRepo, pollConfig.branch)
               ])
               console.log('[WorkflowStore] 数据刷新完成')
@@ -200,6 +312,54 @@ export const useWorkflowStore = defineStore('workflow', () => {
     } catch (error) {
       console.error('Failed to trigger workflow:', error)
       throw error
+    } finally {
+      triggering.value = false
+    }
+  }
+
+  /**
+   * 对多个仓库逐个触发工作流（聚合待处理后的触发入口）
+   *
+   * 与 triggerWorkflow 的区别：不经过 canTrigger 守卫（首个 dispatch 成功后
+   * justTriggered=true 会让后续调用被挡），改为逐仓直接 dispatch，
+   * 全部成功后才置 justTriggered 并开始轮询。
+   *
+   * @param {string} workflowOwner
+   * @param {string} workflowRepo
+   * @param {Array<{ pendingCount, workflowEvent, label, repo }>} repos - 有待处理的仓明细
+   * @param {string} [message]
+   * @param {string} [publisher]
+   * @returns {Promise<boolean>} 是否至少触发了一个仓
+   */
+  async function triggerWorkflowForRepos(
+    workflowOwner,
+    workflowRepo,
+    repos,
+    message = '',
+    publisher = ''
+  ) {
+    const targets = (repos || []).filter(r => r && r.pendingCount > 0 && r.workflowEvent)
+    if (!targets.length) return false
+
+    triggering.value = true
+    try {
+      for (const repo of targets) {
+        await githubService.triggerWorkflow(workflowOwner, workflowRepo, repo.workflowEvent, {
+          message:
+            message || `chore: 处理 ${repo.pendingCount} 张新图片（${repo.label || repo.repo}）`,
+          publisher: publisher || ''
+        })
+      }
+
+      // 全部 dispatch 成功后才标记刚触发，开始轮询状态
+      workflowStatus.value.justTriggered = true
+      workflowStatus.value.triggerTime = Date.now()
+
+      addDelayTimer(() => {
+        startPolling(workflowOwner, workflowRepo)
+      }, 3000)
+
+      return true
     } finally {
       triggering.value = false
     }
@@ -379,11 +539,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
-  // 设置图床仓库配置（用于完成后刷新）
-  function setImageRepoConfig(owner, repo, branch) {
+  // 设置图床仓库配置（用于完成后刷新；repos 传入启用仓列表时完成后走聚合刷新）
+  function setImageRepoConfig(owner, repo, branch, repos = null) {
     pollConfig.imageOwner = owner
     pollConfig.imageRepo = repo
     pollConfig.branch = branch
+    pollConfig.repos = Array.isArray(repos) && repos.length ? repos : null
   }
 
   // 增加会话上传计数
@@ -419,6 +580,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     triggering,
     polling,
     pendingInfo,
+    pendingRepos,
     workflowStatus,
     frontendStatus,
     sessionUploadCount,
@@ -429,9 +591,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
     statusText,
     // 方法
     refreshPendingInfo,
+    refreshAllPendingInfo,
     refreshStatsData,
     refreshWorkflowStatus,
     triggerWorkflow,
+    triggerWorkflowForRepos,
     triggerFrontendDeploy,
     rollbackLastRelease,
     startPolling,
